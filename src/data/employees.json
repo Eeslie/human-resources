@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1757604679482,
+    "status": "Active",
+    "avatar": "👤",
+    "name": "Testing",
+    "email": "levon@gmail",
+    "position": "Barista",
+    "department": "Kitchen",
+    "phone": "09696465",
+    "hireDate": "2022-12-21"
+  },
+  {
+    "id": 1757604720372,
+    "status": "Active",
+    "avatar": "👤",
+    "name": "sepsu",
+    "email": "maysipon@gmail",
+    "position": "Barista",
+    "department": "Kitchen",
+    "phone": "546",
+    "hireDate": "2022-87-21"
+  },
+  {
+    "id": 1757605448416,
+    "status": "Active",
+    "avatar": "👤",
+    "name": "Justin",
+    "email": "justin@gmail.com",
+    "position": "Barista",
+    "department": "Kitchen",
+    "phone": "2522",
+    "hireDate": "2012-12-22"
+  }
+]
