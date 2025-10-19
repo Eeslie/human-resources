@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
-import { getHistory, addHistory } from '../../../../../lib/data';
+import { getSupabaseServerClient } from '../../../../../lib/supabaseServer';
 
 export async function GET(_req, { params }) {
 	const { id } = params;
-	const history = await getHistory(id);
-	return NextResponse.json(history);
+	const supabase = getSupabaseServerClient();
+	const { data, error } = await supabase
+		.from('employee_history')
+		.select('*')
+		.eq('employee_id', id)
+		.order('date', { ascending: false });
+	if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+	return NextResponse.json(data ?? []);
 }
 
 export async function POST(request, { params }) {
@@ -13,8 +19,11 @@ export async function POST(request, { params }) {
 	if (!body || !body.action || !body.description) {
 		return NextResponse.json({ error: 'action and description are required' }, { status: 400 });
 	}
-	const event = await addHistory(id, { status: body.status || 'info', ...body });
-	return NextResponse.json(event, { status: 201 });
+	const supabase = getSupabaseServerClient();
+	const payload = { employee_id: id, status: body.status || 'info', action: body.action, description: body.description, date: body.date };
+	const { data, error } = await supabase.from('employee_history').insert(payload).select('*').single();
+	if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+	return NextResponse.json(data, { status: 201 });
 }
 
 

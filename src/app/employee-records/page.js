@@ -7,19 +7,53 @@ export default function EmployeeRecords() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [employees, setEmployees] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 5;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({
+    first_name: '',
+    last_name: '',
+    job_title: '',
+    contact_info: '',
+    employment_type: 'Full-time',
+    hire_date: '',
+    status: 'Active',
+    department: '',
+    address: ''
+  });
+  const [adding, setAdding] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [newHistory, setNewHistory] = useState({ action: '', description: '', status: 'success' });
+  const [addingHistory, setAddingHistory] = useState(false);
 
   async function fetchEmployees() {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/employees', { cache: 'no-store' });
+      if (!res.ok) {
+        const maybeError = await res.json().catch(() => ({}));
+        setError(maybeError?.error || 'Failed to load employees');
+        setEmployees([]);
+        return;
+      }
       const data = await res.json();
-      setEmployees(data);
-      if (data.length && !selectedEmployee) setSelectedEmployee(data[0]);
+      const list = Array.isArray(data) ? data : [];
+      if (!Array.isArray(data)) {
+        console.error('Unexpected /api/employees response:', data);
+        setError('Invalid employees response');
+      }
+      setEmployees(list);
+      // Adjust pagination if needed
+      const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+      if (currentPage > totalPages) setCurrentPage(totalPages);
+      // Maintain selection if possible
+      if (list.length && !selectedEmployee) setSelectedEmployee(list[0]);
     } catch (e) {
       setError('Failed to load employees');
     } finally {
@@ -27,21 +61,40 @@ export default function EmployeeRecords() {
     }
   }
 
-  async function addEmployee() {
-    const name = prompt('Full name');
-    if (!name) return;
-    const email = prompt('Email');
-    if (!email) return;
-    const position = prompt('Position') || '';
-    const department = prompt('Department') || '';
-    const phone = prompt('Phone') || '';
-    const hireDate = prompt('Hire Date (YYYY-MM-DD)') || '';
-    const body = { name, email, position, department, phone, hireDate, status: 'Active', avatar: '👤' };
-    const res = await fetch('/api/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (res.ok) {
+  async function fetchDepartments() { setDepartments([]); }
+
+  function addEmployee() {
+    setNewEmployee({
+      first_name: '',
+      last_name: '',
+      job_title: '',
+      contact_info: '',
+      employment_type: 'Full-time',
+      hire_date: '',
+      status: 'Active',
+      department: '',
+      address: ''
+    });
+    setShowAddModal(true);
+  }
+
+  async function submitNewEmployee(e) {
+    e?.preventDefault?.();
+    if (!newEmployee.first_name || !newEmployee.last_name) return;
+    setAdding(true);
+    try {
+      const res = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEmployee)
+      });
+      if (!res.ok) throw new Error('Failed');
+      setShowAddModal(false);
       await fetchEmployees();
-    } else {
+    } catch (_e) {
       alert('Failed to add employee');
+    } finally {
+      setAdding(false);
     }
   }
 
@@ -55,19 +108,58 @@ export default function EmployeeRecords() {
     }
   }
 
+  async function deleteEmployee(employeeId, employeeName) {
+    if (!confirm(`Are you sure you want to delete ${employeeName}? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      const res = await fetch(`/api/employees/${employeeId}`, { method: 'DELETE' });
+      if (res.ok) {
+        await fetchEmployees();
+        // If we deleted the currently selected employee, clear the selection
+        if (selectedEmployee && selectedEmployee.id === employeeId) {
+          setSelectedEmployee(null);
+        }
+      } else {
+        alert('Failed to delete employee');
+      }
+    } catch (error) {
+      alert('Failed to delete employee');
+    }
+  }
+
   async function fetchHistory(employeeId) {
     const res = await fetch(`/api/employees/${employeeId}/history`, { cache: 'no-store' });
     const data = await res.json();
     setHistory(data);
   }
 
-  async function addHistoryEvent(employeeId) {
-    const action = prompt('Action (e.g., Promotion)');
-    if (!action) return;
-    const description = prompt('Description') || '';
-    const status = prompt('Status (success|info|warning|error)', 'success') || 'success';
-    const res = await fetch(`/api/employees/${employeeId}/history`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, description, status }) });
-    if (res.ok) fetchHistory(employeeId);
+  function addHistoryEvent(employeeId) {
+    if (!employeeId) return;
+    setNewHistory({ action: '', description: '', status: 'success' });
+    setShowHistoryModal(true);
+  }
+
+  async function submitNewHistory(e) {
+    e?.preventDefault?.();
+    if (!selectedEmployee) return;
+    if (!newHistory.action) return;
+    setAddingHistory(true);
+    try {
+      const res = await fetch(`/api/employees/${selectedEmployee.id}/history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newHistory)
+      });
+      if (!res.ok) throw new Error('Failed');
+      setShowHistoryModal(false);
+      await fetchHistory(selectedEmployee.id);
+    } catch (_e) {
+      alert('Failed to add event');
+    } finally {
+      setAddingHistory(false);
+    }
   }
 
   async function fetchDocuments(employeeId) {
@@ -91,7 +183,15 @@ export default function EmployeeRecords() {
     input.click();
   }
 
-  useEffect(() => { fetchEmployees(); }, []);
+  function getDepartmentName(departmentId) {
+    const department = departments.find(d => d.id === departmentId);
+    return department ? department.name : 'Unknown Department';
+  }
+
+  useEffect(() => { 
+    fetchEmployees(); 
+    fetchDepartments();
+  }, []);
   useEffect(() => {
     if (selectedEmployee) {
       fetchHistory(selectedEmployee.id);
@@ -171,10 +271,10 @@ export default function EmployeeRecords() {
               <div className="space-y-3">
                 {loading && <div className="text-slate-600">Loading...</div>}
                 {error && <div className="text-red-600">{error}</div>}
-                {employees.map((employee) => (
+                {(Array.isArray(employees) ? employees.slice((currentPage - 1) * pageSize, currentPage * pageSize) : []).map((employee) => (
                   <div
                     key={employee.id}
-                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 relative ${
                           selectedEmployee?.id === employee.id
                             ? 'border-green-500 bg-green-50'
                             : 'border-green-200 hover:border-green-300 hover:bg-green-50'
@@ -186,18 +286,54 @@ export default function EmployeeRecords() {
                         {employee.avatar}
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-semibold text-black">{employee.name}</h4>
-                        <p className="text-sm text-gray-700">{employee.position}</p>
-                        <p className="text-xs text-gray-600">{employee.department}</p>
+                        <h4 className="font-semibold text-black">{employee.first_name} {employee.last_name}</h4>
+                        <p className="text-sm text-gray-700">{employee.job_title}</p>
+                        <p className="text-xs text-gray-600">{employee.department || 'Department'} • ID: {employee.employee_id}</p>
                       </div>
-                      <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        employee.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {employee.status}
+                      <div className="flex items-center space-x-2">
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          employee.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {employee.status}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteEmployee(employee.id, `${employee.first_name} ${employee.last_name}`);
+                          }}
+                          className="text-red-600 hover:text-red-800 hover:bg-red-100 p-1 rounded transition-colors"
+                          title="Delete employee"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     </div>
                   </div>
                 ))}
+              </div>
+              {/* Pagination Controls */}
+              <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-sm text-slate-600 order-2 sm:order-1">
+                  Page {currentPage} of {Math.max(1, Math.ceil((employees?.length || 0) / pageSize))}
+                </div>
+                <div className="flex w-full sm:w-auto items-center justify-between sm:justify-end gap-2 order-1 sm:order-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-md border font-medium transition-colors ${currentPage === 1 ? 'border-slate-200 text-slate-300' : 'border-green-700 text-green-800 hover:bg-green-50'}`}
+                    aria-label="Previous page"
+                  >
+                    ‹ Prev
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(Math.max(1, Math.ceil((employees?.length || 0) / pageSize)), p + 1))}
+                    disabled={currentPage >= Math.max(1, Math.ceil((employees?.length || 0) / pageSize))}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-md border font-medium transition-colors ${currentPage >= Math.max(1, Math.ceil((employees?.length || 0) / pageSize)) ? 'border-slate-200 text-slate-300' : 'border-green-700 text-green-800 hover:bg-green-50'}`}
+                    aria-label="Next page"
+                  >
+                    Next ›
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -208,15 +344,25 @@ export default function EmployeeRecords() {
               <div className="bg-white rounded-xl shadow-lg">
                 {/* Employee Header */}
                 <div className="bg-gradient-to-r from-green-50 to-green-100 p-6 rounded-t-xl">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-20 h-20 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center text-4xl">
-                      {selectedEmployee.avatar}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-20 h-20 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center text-4xl">
+                        {selectedEmployee.avatar}
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-bold text-slate-800">{selectedEmployee.first_name} {selectedEmployee.last_name}</h3>
+                        <p className="text-lg text-slate-600">{selectedEmployee.job_title}</p>
+                        <p className="text-slate-500">{selectedEmployee.department || 'Department'} • ID: {selectedEmployee.employee_id}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-2xl font-bold text-slate-800">{selectedEmployee.name}</h3>
-                      <p className="text-lg text-slate-600">{selectedEmployee.position}</p>
-                      <p className="text-slate-500">{selectedEmployee.department}</p>
-                    </div>
+                    <button
+                      onClick={() => deleteEmployee(selectedEmployee.id, `${selectedEmployee.first_name} ${selectedEmployee.last_name}`)}
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                      title="Delete employee"
+                    >
+                      <span>🗑️</span>
+                      <span>Delete</span>
+                    </button>
                   </div>
                 </div>
 
@@ -248,37 +394,32 @@ export default function EmployeeRecords() {
                         <div className="bg-slate-50 rounded-lg p-4">
                           <h4 className="font-semibold text-slate-800 mb-2">Contact Information</h4>
                           <div className="space-y-2 text-sm text-black">
-                            <p><span className="font-medium">Email:</span> {selectedEmployee.email}</p>
-                            <p><span className="font-medium">Phone:</span> {selectedEmployee.phone}</p>
+                            <p><span className="font-medium">Contact Info:</span> {selectedEmployee.contact_info}</p>
+                            <p><span className="font-medium">Employee ID:</span> {selectedEmployee.employee_id}</p>
+                            <p><span className="font-medium">Address:</span> {selectedEmployee.address || '—'}</p>
                           </div>
                         </div>
                         <div className="bg-slate-50 rounded-lg p-4 text-black">
                           <h4 className="font-semibold text-slate-800 mb-2">Employment Details</h4>
                           <div className="space-y-2 text-sm">
-                            <p><span className="font-medium">Hire Date:</span> {selectedEmployee.hireDate}</p>
+                            <p><span className="font-medium">Hire Date:</span> {selectedEmployee.hire_date}</p>
                             <p><span className="font-medium">Status:</span> {selectedEmployee.status}</p>
+                            <p><span className="font-medium">Employment Type:</span> {selectedEmployee.employment_type}</p>
                           </div>
                         </div>
                       </div>
                       <div className="space-y-4">
-                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
-                          <h4 className="font-semibold text-slate-800 mb-3">Quick Stats</h4>
-                          <div className="grid grid-cols-2 gap-4 text-center">
-                            <div>
-                              <div className="text-2xl font-bold text-blue-600">2.5</div>
-                              <div className="text-xs text-slate-600">Years Experience</div>
+                        <div className="bg-white border border-green-200 rounded-lg p-4">
+                          <h4 className="font-semibold text-slate-800 mb-2">Partner Card</h4>
+                          <p className="text-sm text-slate-600">Key partner details without redundant metrics.</p>
+                          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                            <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                              <div className="text-xs text-slate-500">Department</div>
+                              <div className="font-medium text-slate-800">{selectedEmployee.department || '—'}</div>
                             </div>
-                            <div>
-                              <div className="text-2xl font-bold text-green-600">95%</div>
-                              <div className="text-xs text-slate-600">Attendance</div>
-                            </div>
-                            <div>
-                              <div className="text-2xl font-bold text-purple-600">15</div>
-                              <div className="text-xs text-slate-600">Days Leave Used</div>
-                            </div>
-                            <div>
-                              <div className="text-2xl font-bold text-orange-600">A+</div>
-                              <div className="text-xs text-slate-600">Performance</div>
+                            <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                              <div className="text-xs text-slate-500">Job Title</div>
+                              <div className="font-medium text-slate-800">{selectedEmployee.job_title || '—'}</div>
                             </div>
                           </div>
                         </div>
@@ -293,29 +434,16 @@ export default function EmployeeRecords() {
                           <h4 className="font-semibold text-slate-800">Personal Information</h4>
                           <div className="space-y-3">
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">Full Name</label>
-                              <input id="fullName" type="text" defaultValue={selectedEmployee.name} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
+                              <label className="block text-sm font-medium text-slate-700">First Name</label>
+                              <input id="firstName" type="text" defaultValue={selectedEmployee.first_name} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">Email Address</label>
-                              <input id="email" type="email" defaultValue={selectedEmployee.email} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
+                              <label className="block text-sm font-medium text-slate-700">Last Name</label>
+                              <input id="lastName" type="text" defaultValue={selectedEmployee.last_name} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">Phone Number</label>
-                              <input id="phone" type="tel" defaultValue={selectedEmployee.phone} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="space-y-4">
-                          <h4 className="font-semibold text-slate-800">Additional Details</h4>
-                          <div className="space-y-3">
-                            <div>
-                              <label className="block text-sm font-medium text-slate-700">Address</label>
-                              <textarea rows={3} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" defaultValue="123 Main Street, City, State 12345"></textarea>
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-slate-700">Emergency Contact</label>
-                              <input type="text" defaultValue="Jane Doe - +1 (555) 987-6543" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
+                              <label className="block text-sm font-medium text-slate-700">Contact Info</label>
+                              <input id="contactInfo" type="text" defaultValue={selectedEmployee.contact_info} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" placeholder="email, phone" />
                             </div>
                           </div>
                         </div>
@@ -323,10 +451,10 @@ export default function EmployeeRecords() {
                       <div className="flex justify-end space-x-3">
                         <button className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50" onClick={() => fetchEmployees()}>Cancel</button>
                         <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700" onClick={() => {
-                          const name = document.getElementById('fullName').value;
-                          const email = document.getElementById('email').value;
-                          const phone = document.getElementById('phone').value;
-                          savePersonal({ name, email, phone });
+                          const firstName = document.getElementById('firstName').value;
+                          const lastName = document.getElementById('lastName').value;
+                          const contactInfo = document.getElementById('contactInfo').value;
+                          savePersonal({ first_name: firstName, last_name: lastName, contact_info: contactInfo });
                         }}>Save Changes</button>
                       </div>
                     </div>
@@ -339,23 +467,16 @@ export default function EmployeeRecords() {
                           <h4 className="font-semibold text-slate-800">Employment Information</h4>
                           <div className="space-y-3">
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">Position</label>
-                              <input type="text"defaultValue={selectedEmployee.position} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black"
-                              />
+                              <label className="block text-sm font-medium text-slate-700">Job Title</label>
+                              <input id="jobTitle" type="text" defaultValue={selectedEmployee.job_title} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-slate-700">Department</label>
-                              <select className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black">
-                                <option>Engineering</option>
-                                <option>Human Resources</option>
-                                <option>Marketing</option>
-                                <option>Finance</option>
-                                <option>Sales</option>
-                              </select>
+                              <input id="department" type="text" defaultValue={selectedEmployee.department || ''} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-slate-700">Hire Date</label>
-                              <input type="date" defaultValue={selectedEmployee.hireDate} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
+                              <input id="hireDate" type="date" defaultValue={selectedEmployee.hire_date} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
                             </div>
                           </div>
                         </div>
@@ -363,24 +484,54 @@ export default function EmployeeRecords() {
                           <h4 className="font-semibold text-slate-800">Contract Details</h4>
                           <div className="space-y-3">
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">Contract Type</label>
-                              <select className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black">
-                                <option>Full-time</option>
-                                <option>Part-time</option>
-                                <option>Contract</option>
-                                <option>Intern</option>
+                              <label className="block text-sm font-medium text-slate-700">Address</label>
+                              <textarea id="address" rows={3} defaultValue={selectedEmployee.address || ''} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black"></textarea>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700">Employment Type</label>
+                              <select id="employmentType" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" value={selectedEmployee.employment_type || 'Full-time'} onChange={(e) => setSelectedEmployee({ ...selectedEmployee, employment_type: e.target.value })}>
+                                <option value="Full-time">Full-time</option>
+                                <option value="Part-time">Part-time</option>
+                                <option value="Contract">Contract</option>
+                                <option value="Intern">Intern</option>
                               </select>
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">Salary</label>
-                              <input type="text" defaultValue="$75,000" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
+                              <label className="block text-sm font-medium text-slate-700">Status</label>
+                              <select id="status" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" value={selectedEmployee.status || 'Active'} onChange={(e) => setSelectedEmployee({ ...selectedEmployee, status: e.target.value })}>
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                                <option value="On Leave">On Leave</option>
+                                <option value="Terminated">Terminated</option>
+                              </select>
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-slate-700">Manager</label>
-                              <input type="text" defaultValue="Sarah Johnson" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
+                              <label className="block text-sm font-medium text-slate-700">Employee ID</label>
+                              <input id="employeeId" type="text" defaultValue={selectedEmployee.employee_id} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-black" />
                             </div>
                           </div>
                         </div>
+                      </div>
+                      <div className="flex justify-end space-x-3">
+                        <button className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50" onClick={() => fetchEmployees()}>Cancel</button>
+                        <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700" onClick={() => {
+                          const jobTitle = document.getElementById('jobTitle').value;
+                          const department = document.getElementById('department').value;
+                          const hireDate = document.getElementById('hireDate').value;
+                          const employmentType = document.getElementById('employmentType').value;
+                          const status = document.getElementById('status').value;
+                          const employeeId = document.getElementById('employeeId').value;
+                          const address = document.getElementById('address').value;
+                          savePersonal({ 
+                            job_title: jobTitle, 
+                            department: department,
+                            hire_date: hireDate, 
+                            employment_type: employmentType, 
+                            status: status, 
+                            employee_id: employeeId,
+                            address: address
+                          });
+                        }}>Save Changes</button>
                       </div>
                     </div>
                   )}
@@ -417,7 +568,7 @@ export default function EmployeeRecords() {
                     <div className="space-y-6">
                       <div className="flex justify-between items-center">
                         <h4 className="font-semibold text-slate-800">Employment History</h4>
-                        <button onClick={() => addHistoryEvent(selectedEmployee.id)} className="px-3 py-2 bg-slate-800 text-white rounded-md hover:bg-slate-900">+ Add Event</button>
+                        <button onClick={() => addHistoryEvent(selectedEmployee.id)} className="px-3 py-2 bg-green-700 text-white rounded-md hover:bg-green-800">+ Add Event</button>
                       </div>
                       <div className="space-y-4">
                         {history.map((event) => (
@@ -452,6 +603,110 @@ export default function EmployeeRecords() {
           </div>
         </div>
       </div>
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowAddModal(false)}></div>
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-black">Add New Partner</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-600 hover:text-slate-900">✖</button>
+            </div>
+            <form onSubmit={submitNewEmployee} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">First Name</label>
+                  <input required value={newEmployee.first_name} onChange={(e) => setNewEmployee({ ...newEmployee, first_name: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Last Name</label>
+                  <input required value={newEmployee.last_name} onChange={(e) => setNewEmployee({ ...newEmployee, last_name: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Job Title</label>
+                  <input value={newEmployee.job_title} onChange={(e) => setNewEmployee({ ...newEmployee, job_title: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Department</label>
+                  <input value={newEmployee.department} onChange={(e) => setNewEmployee({ ...newEmployee, department: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" placeholder="Store Operations" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Contact Info</label>
+                <input value={newEmployee.contact_info} onChange={(e) => setNewEmployee({ ...newEmployee, contact_info: e.target.value })} placeholder="email, phone" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Address</label>
+                <textarea rows={3} value={newEmployee.address} onChange={(e) => setNewEmployee({ ...newEmployee, address: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" placeholder="Street, City, State, ZIP"></textarea>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Employment Type</label>
+                  <select value={newEmployee.employment_type} onChange={(e) => setNewEmployee({ ...newEmployee, employment_type: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black">
+                    <option value="Full-time">Full-time</option>
+                    <option value="Part-time">Part-time</option>
+                    <option value="Contract">Contract</option>
+                    <option value="Intern">Intern</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Hire Date</label>
+                  <input type="date" value={newEmployee.hire_date} onChange={(e) => setNewEmployee({ ...newEmployee, hire_date: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Status</label>
+                  <select value={newEmployee.status} onChange={(e) => setNewEmployee({ ...newEmployee, status: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black">
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="On Leave">On Leave</option>
+                    <option value="Terminated">Terminated</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end space-x-3 pt-2">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={adding} className="px-4 py-2 bg-green-700 text-white rounded-md hover:bg-green-800 disabled:opacity-50">{adding ? 'Adding…' : 'Add Partner'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowHistoryModal(false)}></div>
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-black">Add History Event</h3>
+              <button onClick={() => setShowHistoryModal(false)} className="text-slate-600 hover:text-slate-900">✖</button>
+            </div>
+            <form onSubmit={submitNewHistory} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Action</label>
+                <input required value={newHistory.action} onChange={(e) => setNewHistory({ ...newHistory, action: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" placeholder="Promotion" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Description</label>
+                <textarea rows={3} value={newHistory.description} onChange={(e) => setNewHistory({ ...newHistory, description: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" placeholder="Details of the event"></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Status</label>
+                <select value={newHistory.status} onChange={(e) => setNewHistory({ ...newHistory, status: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black">
+                  <option value="success">success</option>
+                  <option value="info">info</option>
+                  <option value="warning">warning</option>
+                  <option value="error">error</option>
+                </select>
+              </div>
+              <div className="flex justify-end space-x-3 pt-2">
+                <button type="button" onClick={() => setShowHistoryModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={addingHistory} className="px-4 py-2 bg-green-700 text-white rounded-md hover:bg-green-800 disabled:opacity-50">{addingHistory ? 'Adding…' : 'Add Event'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
