@@ -434,7 +434,7 @@ export default function Payroll() {
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-center relative z-10">
-                  <h3 className="text-xl font-bold text-slate-800">Current Payroll Period: January 2024</h3>
+                  <h3 className="text-xl font-bold text-slate-800">Current Payroll Period:</h3>
                   <div className="flex space-x-3">
                     <button type="button" onClick={() => addPayrollLine()} className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 pointer-events-auto">
                       + Add Entry
@@ -524,7 +524,7 @@ export default function Payroll() {
 
             {activeTab === 'process' && (
               <div className="space-y-6">
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6">
+                <div className="bg-gradient-to-r from-orange-50 to-orange-50 rounded-lg p-6">
                   <h3 className="text-xl font-bold text-slate-800 mb-4">Payroll Processing Wizard</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-white rounded-lg p-4 shadow-sm">
@@ -562,7 +562,7 @@ export default function Payroll() {
                         </div>
                         <div className="flex justify-between border-t pt-2">
                           <span className="text-sm font-semibold text-slate-800">Net Pay:</span>
-                          <span className="font-bold text-green-600 text-black">$1,057,500</span>
+                          <span className="font-bold text-orange-700 text-black">$1,057,500</span>
                         </div>
                       </div>
                     </div>
@@ -582,7 +582,7 @@ export default function Payroll() {
                           <input type="checkbox" className="rounded border-slate-300 text-black" />
                           <label className="ml-2 text-sm text-slate-700">Update bank transfers</label>
                         </div>
-                        <button className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 mt-4">
+                        <button className="w-full bg-orange-600 text-white py-2 rounded-lg hover:bg-green-700 mt-4">
                           Process Payroll
                         </button>
                       </div>
@@ -600,7 +600,7 @@ export default function Payroll() {
                     <button onClick={() => fetchPayslips()} className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">
                       Refresh
                     </button>
-                    <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                    <button className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
                       Export All
                     </button>
                   </div>
@@ -764,7 +764,7 @@ NET PAY:       $${(amounts.net || 0).toLocaleString()}
                       <option>2024</option>
                       <option>2023</option>
                     </select>
-                    <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                    <button className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
                       Export Report
                     </button>
                   </div>

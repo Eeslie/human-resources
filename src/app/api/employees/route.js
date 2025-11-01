@@ -11,7 +11,10 @@ export async function GET() {
 		const supabase = getSupabaseServerClient();
 		const { data, error } = await supabase.from('employee').select('*').order('created_at', { ascending: false });
 		if (error) throw error;
-		if (Array.isArray(data) && data.length > 0) return NextResponse.json(data);
+		if (Array.isArray(data) && data.length > 0) {
+			const mapped = data.map(e => ({ ...e, full_name: `${e.first_name || ''} ${e.last_name || ''}`.trim() }));
+			return NextResponse.json(mapped);
+		}
 		// Fallback to filesystem if Supabase is empty (e.g., RLS/policies block inserts)
 		const fsEmployees = await getEmployeesFs();
 		return NextResponse.json(fsEmployees);
