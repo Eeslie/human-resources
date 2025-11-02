@@ -1,0 +1,27 @@
+[
+  {
+    "id": "undefined",
+    "created_at": "2025-09-12T07:10:01.848Z",
+    "date": null,
+    "time": null
+  },
+  {
+    "id": "9412f866-f7b9-423c-ba9c-75665aecbc9c",
+    "created_at": "2025-10-05T07:44:59.860Z",
+    "candidate": "a",
+    "position": "a",
+    "date": "2025-10-05",
+    "time": "10:00",
+    "type": "Interview"
+  },
+  {
+    "id": "9cfe0fa4-45ea-4e01-a123-9720374afb89",
+    "created_at": "2025-10-06T12:21:19.099Z",
+    "applicant_id": "06e815df-aae0-4f97-b5e2-e36ec758c720",
+    "candidate": "Mak",
+    "position": "Barista",
+    "date": "2025-10-06",
+    "time": "10:00",
+    "type": "Interview"
+  }
+]

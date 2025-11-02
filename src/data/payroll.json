@@ -1,0 +1,25 @@
+[
+  {
+    "id": "19bd28cf-a017-4c80-a2bc-d22fceb2cbf6",
+    "created_at": "2025-09-12T06:07:05.582Z",
+    "payroll_id": "41b45110-cbf4-4c2b-b2e9-96203ea110c9",
+    "employee_id": "55e47c15-c23d-44b3-893b-b3871dd469e9",
+    "salary_base": 15000,
+    "bonus": 2000,
+    "overtime": 50,
+    "deductions": 500,
+    "payroll_date": "2024-01-31",
+    "status": "Pending"
+  },
+  {
+    "id": "97be8b57-dc8c-4c10-a229-0c7b08cfe370",
+    "created_at": "2025-09-12T13:24:38.018Z",
+    "payroll_id": "d1213bc3-3362-411d-b31f-4300085ac92b",
+    "employee_id": "f92f9407-ae7e-4863-a4af-0cf50e35a335",
+    "salary_base": "50000",
+    "bonus": "0",
+    "overtime": "23",
+    "payroll_date": "2024-01-31",
+    "status": "Pending"
+  }
+]
