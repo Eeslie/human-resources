@@ -130,6 +130,82 @@ export default function TimeAttendance() {
     setAttendanceModalOpen(true);
   }
 
+  async function recordRealTimeAttendance(employeeId, type) {
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+    const today = isoToday();
+    
+    // Check if attendance record exists for today
+    const existing = (attendanceToday || []).find(a => a.employee_id === employeeId);
+    
+    let payload = {
+      employee_id: employeeId,
+      date: today
+    };
+
+    if (type === 'in') {
+      payload.time_in = currentTime;
+      // Preserve existing time_out if it exists
+      if (existing?.time_out) {
+        payload.time_out = existing.time_out;
+        // Recalculate hours if time_out already exists
+        const [inHour, inMin] = currentTime.split(':').map(Number);
+        const [outHour, outMin] = existing.time_out.split(':').map(Number);
+        const inMinutes = inHour * 60 + inMin;
+        const outMinutes = outHour * 60 + outMin;
+        const hoursWorked = (outMinutes - inMinutes) / 60;
+        payload.hours_worked = Math.max(0, hoursWorked).toFixed(2);
+      }
+    } else if (type === 'out') {
+      payload.time_out = currentTime;
+      // Preserve existing time_in
+      if (existing?.time_in) {
+        payload.time_in = existing.time_in;
+        // Calculate hours worked
+        const [inHour, inMin] = existing.time_in.split(':').map(Number);
+        const [outHour, outMin] = currentTime.split(':').map(Number);
+        const inMinutes = inHour * 60 + inMin;
+        const outMinutes = outHour * 60 + outMin;
+        const hoursWorked = (outMinutes - inMinutes) / 60;
+        payload.hours_worked = Math.max(0, hoursWorked).toFixed(2);
+      } else {
+        // If no time_in exists, we still need to set time_out but can't calculate hours
+        payload.hours_worked = null;
+      }
+    }
+
+    try {
+      if (existing?.id) {
+        // Update existing record
+        const res = await fetch('/api/attendance', { 
+          method: 'PUT', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ id: existing.id, updates: payload }) 
+        });
+        if (!res.ok) throw new Error('Failed to update attendance');
+      } else {
+        // Create new record
+        const res = await fetch('/api/attendance', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(payload) 
+        });
+        if (!res.ok) throw new Error('Failed to create attendance');
+      }
+      
+      // Refresh attendance data immediately
+      const attRes = await fetch(`/api/attendance?date=${today}`, { cache: 'no-store' });
+      const att = await attRes.json().catch(() => []);
+      setAttendanceToday(Array.isArray(att) ? att : []);
+      
+      // Also refresh timesheets
+      await refreshTimesheets();
+    } catch (error) {
+      console.error('Failed to record attendance:', error);
+      alert(`Failed to record attendance: ${error.message}`);
+    }
+  }
+
   function openViewDetails(row) {
     const existing = (attendanceToday || []).find(a => a.employee_id === row.employee_id);
     setViewData({
@@ -224,6 +300,14 @@ export default function TimeAttendance() {
     return { totalEmployees: total, present, absent, late: 0, onLeave, averageHours: avgHours };
   }, [employees, attendanceToday, recentLeaves]);
 
+  // Leave limitations per type
+  const leaveLimitations = {
+    'Vacation': 6,
+    'Sick Leave': 4,
+    'Personal Leave': 2,
+    'Emergency Leave': 2
+  };
+
   const leaveRequests = useMemo(() => {
     const empById = new Map((employees || []).map(e => [e.id, e]));
     const empByEmployeeId = new Map((employees || []).map(e => [e.employee_id, e]));
@@ -231,6 +315,9 @@ export default function TimeAttendance() {
     return (recentLeaves || []).map(r => {
       // Try both id and employee_id to find the employee
       const emp = empById.get(r.employee_id) || empByEmployeeId.get(r.employee_id);
+      const days = r.start_date && r.end_date ? (Math.max(0, (new Date(r.end_date) - new Date(r.start_date)) / 86400000) + 1) : undefined;
+      const limit = leaveLimitations[r.leave_type] || 0;
+      const isOverLimit = days !== undefined && limit > 0 && days > limit;
       
       return {
         id: r.id,
@@ -238,7 +325,9 @@ export default function TimeAttendance() {
         type: r.leave_type,
         startDate: r.start_date,
         endDate: r.end_date,
-        days: r.start_date && r.end_date ? (Math.max(0, (new Date(r.end_date) - new Date(r.start_date)) / 86400000) + 1) : undefined,
+        days,
+        limit,
+        isOverLimit,
         status: r.status || 'Pending',
         avatar: '☕'
       };
@@ -435,10 +524,15 @@ export default function TimeAttendance() {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div>
-                    <h3 className="text-xl font-bold text-black mb-4">Today's Attendance</h3>
-                    <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-bold text-black">Today's Attendance</h3>
+                      <span className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                        {attendanceRows.length} {attendanceRows.length === 1 ? 'Employee' : 'Employees'}
+                      </span>
+                    </div>
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-green-300 scrollbar-track-green-50">
                       {attendanceRows.map((employee) => (
-                        <div key={employee.id} className="border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div key={employee.id} className="border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center space-x-3">
                               <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center text-xl">
@@ -457,7 +551,7 @@ export default function TimeAttendance() {
                               {employee.status}
                             </span>
                           </div>
-                          <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div className="grid grid-cols-3 gap-4 text-sm mb-3">
                             <div>
                               <span className="text-gray-600">Check In:</span>
                               <span className="font-medium ml-1 text-black">{employee.checkIn}</span>
@@ -471,8 +565,34 @@ export default function TimeAttendance() {
                               <span className="font-medium ml-1 text-black">{employee.hours}h</span>
                             </div>
                           </div>
+                          <div className="mt-3">
+                            {!employee.checkIn || employee.checkIn === '--:--' ? (
+                              <button 
+                                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors w-full" 
+                                onClick={() => recordRealTimeAttendance(employee.employee_id, 'in')}
+                              >
+                                ⏰ Time In Now
+                              </button>
+                            ) : !employee.checkOut || employee.checkOut === '--:--' ? (
+                              <button 
+                                className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 transition-colors w-full" 
+                                onClick={() => recordRealTimeAttendance(employee.employee_id, 'out')}
+                              >
+                                ⏰ Time Out Now
+                              </button>
+                            ) : (
+                              <div className="text-center text-sm text-green-700 font-medium py-2">
+                                ✓ Attendance Complete
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
+                      {attendanceRows.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                          <p>No attendance records for today</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -577,7 +697,30 @@ export default function TimeAttendance() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <button className="text-green-600 hover:text-green-900 mr-3" onClick={() => openViewDetails(employee)}>View Details</button>
-                            <button className="text-blue-600 hover:text-blue-900" onClick={() => openAttendanceEdit(employee)}>{employee.status === 'Absent' ? 'Add' : 'Edit'}</button>
+                            <button className="text-blue-600 hover:text-blue-900 mr-3" onClick={() => openAttendanceEdit(employee)}>{employee.status === 'Absent' ? 'Add' : 'Edit'}</button>
+                            {(() => {
+                              // Show Time In button if no time_in, or Time Out button if time_in exists but no time_out
+                              if (!employee.checkIn || employee.checkIn === '--:--') {
+                                return (
+                                  <button 
+                                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors" 
+                                    onClick={() => recordRealTimeAttendance(employee.employee_id, 'in')}
+                                  >
+                                    ⏰ Time In
+                                  </button>
+                                );
+                              } else if (!employee.checkOut || employee.checkOut === '--:--') {
+                                return (
+                                  <button 
+                                    className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 transition-colors" 
+                                    onClick={() => recordRealTimeAttendance(employee.employee_id, 'out')}
+                                  >
+                                    ⏰ Time Out
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
                           </td>
                         </tr>
                       ))}
@@ -756,11 +899,25 @@ export default function TimeAttendance() {
                           </div>
                           <div className="space-y-2 text-sm">
                             <p><span className="font-medium text-green-900">Duration:</span> <span className="text-green-800">{request.startDate} - {request.endDate} ({request.days} days)</span></p>
+                            {request.limit > 0 && (
+                              <p className={request.isOverLimit ? 'text-red-600 font-medium' : 'text-green-700'}>
+                                Limit: {request.days || 0}/{request.limit} days {request.isOverLimit ? '(Exceeded!)' : ''}
+                              </p>
+                            )}
                           </div>
                           {request.status === 'Pending' && (
                             <div className="mt-3 flex space-x-2">
-                              <button className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700" onClick={() => updateLeaveStatus(request.id, 'Approved')}>
-                                Approve
+                              <button 
+                                className={`px-3 py-1 rounded text-sm ${request.isOverLimit ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'} text-white`} 
+                                onClick={async () => {
+                                  if (request.isOverLimit) {
+                                    const confirmed = window.confirm(`This leave request exceeds the limit of ${request.limit} days. Do you want to approve anyway?`);
+                                    if (!confirmed) return;
+                                  }
+                                  await updateLeaveStatus(request.id, 'Approved');
+                                }}
+                              >
+                                {request.isOverLimit ? '⚠️ Approve (Over Limit)' : 'Approve'}
                               </button>
                               <button className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700" onClick={() => updateLeaveStatus(request.id, 'Rejected')}>
                                 Reject
@@ -780,11 +937,17 @@ export default function TimeAttendance() {
                     <div className="bg-white border border-green-200 rounded-lg p-6">
                       <div className="space-y-4">
                         {[
-                          { type: 'Vacation', used: 12, total: 20, remaining: 8 },
-                          { type: 'Sick Leave', used: 3, total: 10, remaining: 7 },
-                          { type: 'Personal Leave', used: 2, total: 5, remaining: 3 },
-                          { type: 'Emergency Leave', used: 0, total: 3, remaining: 3 }
-                        ].map((leave, index) => (
+                          { type: 'Vacation', used: 0, total: leaveLimitations['Vacation'] || 6, remaining: leaveLimitations['Vacation'] || 6 },
+                          { type: 'Sick Leave', used: 0, total: leaveLimitations['Sick Leave'] || 4, remaining: leaveLimitations['Sick Leave'] || 4 },
+                          { type: 'Personal Leave', used: 0, total: leaveLimitations['Personal Leave'] || 2, remaining: leaveLimitations['Personal Leave'] || 2 },
+                          { type: 'Emergency Leave', used: 0, total: leaveLimitations['Emergency Leave'] || 2, remaining: leaveLimitations['Emergency Leave'] || 2 }
+                        ].map((leave, index) => {
+                          // Calculate actual used days from approved leaves
+                          const usedDays = leaveRequests
+                            .filter(l => l.type === leave.type && l.status === 'Approved')
+                            .reduce((sum, l) => sum + (l.days || 0), 0);
+                          const remaining = Math.max(0, leave.total - usedDays);
+                          return (
                           <div key={index} className="space-y-2">
                             <div className="flex justify-between items-center">
                               <span className="font-medium text-green-900">{leave.type}</span>
@@ -793,15 +956,16 @@ export default function TimeAttendance() {
                             <div className="w-full bg-green-200 rounded-full h-2">
                               <div 
                                 className="bg-green-600 h-2 rounded-full" 
-                                style={{ width: `${(leave.used / leave.total) * 100}%` }}
+                                style={{ width: `${(usedDays / leave.total) * 100}%` }}
                               ></div>
                             </div>
                             <div className="flex justify-between text-sm">
-                              <span className="text-green-700">Used: {leave.used} days</span>
-                              <span className="text-green-600 font-medium">Remaining: {leave.remaining} days</span>
+                              <span className="text-green-700">Used: {usedDays} days</span>
+                              <span className="text-green-600 font-medium">Remaining: {remaining} days</span>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

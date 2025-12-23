@@ -9,7 +9,6 @@ export default function Recruitment() {
   const [jobs, setJobs] = useState([]);
   const [allApplicants, setAllApplicants] = useState([]);
   const [interviews, setInterviews] = useState([]);
-  const [onboardingTasks, setOnboardingTasks] = useState([]);
 
 	// Modal infra
 	const [confirmOpen, setConfirmOpen] = useState(false);
@@ -417,16 +416,6 @@ export default function Recruitment() {
     status: 'Scheduled'
   });
 
-	// Onboarding modals state
-	const [onboardingStartOpen, setOnboardingStartOpen] = useState(false);
-	const [onboardingEditOpen, setOnboardingEditOpen] = useState(false);
-  const [onboardingForm, setOnboardingForm] = useState({ employee_name: '', position: '', start_date: new Date().toISOString().slice(0,10) });
-  const [onboardingTaskEditing, setOnboardingTaskEditing] = useState(null);
-
-  // Helper function for onboarding form changes
-  const handleOnboardingFormChange = (field, value) => {
-    setOnboardingForm(prev => ({ ...prev, [field]: value }));
-  };
 
   async function fetchJobs() {
     const res = await fetch('/api/recruitment', { cache: 'no-store' });
@@ -443,25 +432,17 @@ export default function Recruitment() {
     const data = await res.json();
     setInterviews(data);
   }
-  async function fetchOnboarding() {
-    const res = await fetch('/api/onboarding', { cache: 'no-store' });
-    const data = await res.json();
-    setOnboardingTasks(data);
-  }
-
   useEffect(() => {
     fetchJobs();
     fetchApplicants();
     fetchInterviews();
-    fetchOnboarding();
   }, []);
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'jobs', label: 'Job Postings', icon: '💼' },
     { id: 'applicants', label: 'Applicants', icon: '👥' },
-    { id: 'interviews', label: 'Interviews', icon: '🗣️' },
-    { id: 'onboarding', label: 'Onboarding', icon: '🎯' }
+    { id: 'interviews', label: 'Interviews', icon: '🗣️' }
   ];
 
   const jobPostings = [
@@ -562,12 +543,13 @@ export default function Recruitment() {
     }
   ];
 
+  // Calculate real-time stats from actual data
   const recruitmentStats = {
-    activeJobs: 12,
-    totalApplicants: 156,
-    interviewsScheduled: 28,
-    offersMade: 8,
-    newHires: 5
+    activeJobs: jobs.filter(j => (j.status || 'Active') === 'Active').length,
+    totalApplicants: allApplicants.length,
+    interviewsScheduled: interviews.filter(i => (i.status || 'Scheduled') === 'Scheduled').length,
+    offersMade: allApplicants.filter(a => (a.status || '') === 'Offered').length,
+    newHires: 0 // Can be calculated from offers accepted if needed
   };
 
   return (<>
@@ -606,13 +588,19 @@ export default function Recruitment() {
       {/* Hero Section */}
       <div className="bg-gradient-to-r from-orange-800 to-orange-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center mb-6">
-            <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-4xl mr-4">
-              🎯
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center">
+              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-4xl mr-4">
+                🎯
+              </div>
+              <div>
+                <h2 className="text-3xl font-bold mb-2">Partner Recruitment & Hiring</h2>
+                <p className="text-orange-100 text-lg">Streamline the hiring process from job posting to successful partner recruitment</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-3xl font-bold mb-2">Partner Recruitment & Onboarding</h2>
-              <p className="text-orange-100 text-lg">Streamline the hiring process from job posting to successful partner onboarding</p>
+            <div className="text-right">
+              <p className="text-orange-200 text-sm">Last Updated</p>
+              <p className="text-white font-semibold">{new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
             </div>
           </div>
         </div>
@@ -736,34 +724,66 @@ export default function Recruitment() {
                   </div>
 
                   <div>
-                    <h3 className="text-xl font-bold text-slate-800 mb-4">Top Applicants</h3>
-                    <div className="space-y-4">
-                      {(Array.isArray(allApplicants) && allApplicants.length ? allApplicants : applicants).slice(0, 3).map((applicant) => (
-                        <div key={applicant.id} className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                          <div className="flex items-center space-x-3 mb-2">
-                            <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full flex items-center justify-center text-xl">
-                              {applicant.avatar}
+                    <h3 className="text-xl font-bold text-slate-800 mb-4">Recruitment Pipeline</h3>
+                    <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-6 border border-slate-200">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                              <span className="text-xl">📋</span>
                             </div>
                             <div>
-                              <h4 className="font-semibold text-slate-800">{applicant.name}</h4>
-                              <p className="text-sm text-slate-600">{applicant.position}</p>
+                              <p className="font-semibold text-slate-800">Under Review</p>
+                              <p className="text-xs text-slate-600">Initial screening</p>
                             </div>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              applicant.status === 'Offered' ? 'bg-green-100 text-green-800' :
-                              applicant.status === 'Interview Scheduled' ? 'bg-blue-100 text-blue-800' :
-                              'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {applicant.status}
-                            </span>
-                            <div className="flex items-center">
-                              <span className="text-yellow-500">⭐</span>
-                              <span className="text-sm font-medium ml-1">{applicant.rating}</span>
-                            </div>
-                          </div>
+                          <span className="text-2xl font-bold text-yellow-600">
+                            {allApplicants.filter(a => (a.status || '') === 'Under Review' || !a.status).length}
+                          </span>
                         </div>
-                      ))}
+                        <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                              <span className="text-xl">🗣️</span>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-slate-800">Interview Scheduled</p>
+                              <p className="text-xs text-slate-600">In interview process</p>
+                            </div>
+                          </div>
+                          <span className="text-2xl font-bold text-blue-600">
+                            {allApplicants.filter(a => (a.status || '').includes('Interview')).length}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                              <span className="text-xl">✅</span>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-slate-800">Offered</p>
+                              <p className="text-xs text-slate-600">Offer extended</p>
+                            </div>
+                          </div>
+                          <span className="text-2xl font-bold text-green-600">
+                            {allApplicants.filter(a => (a.status || '') === 'Offered').length}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                              <span className="text-xl">❌</span>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-slate-800">Rejected</p>
+                              <p className="text-xs text-slate-600">Not proceeding</p>
+                            </div>
+                          </div>
+                          <span className="text-2xl font-bold text-red-600">
+                            {allApplicants.filter(a => (a.status || '') === 'Rejected').length}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -896,21 +916,97 @@ export default function Recruitment() {
                         </div>
                       </div>
 
-                      <div className="flex space-x-2">
-                        <button onClick={() => { setApplicantTarget(applicant); setApplicantForm({ full_name: applicant.full_name || applicant.name || '', position: applicant.position || '', email: applicant.email || '', phone: applicant.phone || '', experience: applicant.experience || '', rating: applicant.rating ?? 0, status: applicant.status || 'Under Review' }); setApplicantEditOpen(true); }} className="flex-1 border border-slate-300 text-black py-2 rounded-lg hover:bg-slate-50 text-sm transition-colors">
-                          Edit
+                      <div className="grid grid-cols-2 gap-2">
+                        <button 
+                          onClick={() => { 
+                            setApplicantTarget(applicant); 
+                            setApplicantForm({ 
+                              full_name: applicant.full_name || applicant.name || '', 
+                              position: applicant.position || '', 
+                              email: applicant.email || '', 
+                              phone: applicant.phone || '', 
+                              experience: applicant.experience || '', 
+                              rating: applicant.rating ?? 0, 
+                              status: applicant.status || 'Under Review' 
+                            }); 
+                            setApplicantEditOpen(true); 
+                          }} 
+                          className="flex items-center justify-center gap-2 border-2 border-blue-300 text-blue-700 py-2 px-3 rounded-lg hover:bg-blue-50 hover:border-blue-400 text-sm font-medium transition-all shadow-sm"
+                        >
+                          <span>✏️</span>
+                          <span>Edit</span>
                         </button>
-                        <button onClick={() => { setApplicantTarget(applicant); setApplicantForm(prev => ({ ...prev, status: applicant.status || 'Under Review' })); setApplicantStatusOpen(true); }} className="flex-1 bg-orange-900 text-white py-2 rounded-lg hover:bg-orange-800 text-sm transition-colors">
-                          Update Status
+                        <button 
+                          onClick={() => { 
+                            setApplicantTarget(applicant); 
+                            setApplicantForm(prev => ({ ...prev, status: applicant.status || 'Under Review' })); 
+                            setApplicantStatusOpen(true); 
+                          }} 
+                          className="flex items-center justify-center gap-2 bg-orange-600 text-white py-2 px-3 rounded-lg hover:bg-orange-700 text-sm font-medium transition-all shadow-md"
+                        >
+                          <span>🔄</span>
+                          <span>Status</span>
                         </button>
-                        <button onClick={() => { setApplicantTarget(applicant); setInterviewForm({ candidate: applicant.full_name || applicant.name || '', position: applicant.position || '', date: new Date().toISOString().slice(0,10), time: '10:00' }); setApplicantInterviewOpen(true); }} className="flex-1 border border-slate-300 text-black py-2 rounded-lg hover:bg-slate-50 text-sm transition-colors">
-                          Schedule Interview
+                        <button 
+                          onClick={() => { 
+                            if (!applicant.email && !applicant.phone) {
+                              alert('⚠️ Please add contact information (email or phone) before scheduling an interview.');
+                              return;
+                            }
+                            setApplicantTarget(applicant); 
+                            setInterviewForm({ 
+                              candidate: applicant.full_name || applicant.name || '', 
+                              position: applicant.position || '', 
+                              date: new Date().toISOString().slice(0,10), 
+                              time: '10:00',
+                              applicant_id: applicant.id
+                            }); 
+                            setApplicantInterviewOpen(true); 
+                          }} 
+                          className="flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-3 rounded-lg hover:bg-blue-700 text-sm font-medium transition-all shadow-md"
+                        >
+                          <span>🗓️</span>
+                          <span>Interview</span>
                         </button>
-                        <button onClick={() => { setApplicantTarget(applicant); setOfferForm({ salary: '' }); setApplicantOfferOpen(true); }} className="flex-1 bg-green-900 text-white py-2 rounded-lg hover:bg-green-800 text-sm transition-colors">
-                          Issue Offer
+                        <button 
+                          onClick={() => { 
+                            if ((applicant.status || '') === 'Offered') {
+                              alert('ℹ️ An offer has already been extended to this applicant.');
+                              return;
+                            }
+                            setApplicantTarget(applicant); 
+                            setOfferForm({ salary: '' }); 
+                            setApplicantOfferOpen(true); 
+                          }} 
+                          className="flex items-center justify-center gap-2 bg-green-600 text-white py-2 px-3 rounded-lg hover:bg-green-700 text-sm font-medium transition-all shadow-md"
+                        >
+                          <span>💼</span>
+                          <span>Offer</span>
                         </button>
-                        <button onClick={() => { setApplicantTarget(applicant); setConfirmTitle('Delete Applicant'); setConfirmMessage('Are you sure you want to delete this applicant?'); setConfirmAction(() => async () => { const res = await fetch(`/api/applicants/${applicant.id}`, { method: 'DELETE' }); if (res.ok) fetchApplicants(); setConfirmOpen(false); }); setConfirmOpen(true); }} className="flex-1 bg-red-900 text-white py-2 rounded-lg hover:bg-red-800 text-sm transition-colors">
-                          Delete
+                        <button 
+                          onClick={() => { 
+                            if (!window.confirm(`⚠️ Are you sure you want to delete ${applicant.full_name || applicant.name || 'this applicant'}? This action cannot be undone.`)) {
+                              return;
+                            }
+                            setApplicantTarget(applicant); 
+                            setConfirmTitle('Delete Applicant'); 
+                            setConfirmMessage(`Are you sure you want to permanently delete ${applicant.full_name || applicant.name || 'this applicant'}? This action cannot be undone.`); 
+                            setConfirmAction(() => async () => { 
+                              const res = await fetch(`/api/applicants/${applicant.id}`, { method: 'DELETE' }); 
+                              if (res.ok) {
+                                fetchApplicants();
+                                alert('✅ Applicant deleted successfully.');
+                              } else {
+                                alert('❌ Failed to delete applicant. Please try again.');
+                              }
+                              setConfirmOpen(false); 
+                            }); 
+                            setConfirmOpen(true); 
+                          }} 
+                          className="col-span-2 flex items-center justify-center gap-2 bg-red-600 text-white py-2 px-3 rounded-lg hover:bg-red-700 text-sm font-medium transition-all shadow-md"
+                        >
+                          <span>🗑️</span>
+                          <span>Delete Applicant</span>
                         </button>
                       </div>
                     </div>
@@ -932,160 +1028,181 @@ export default function Recruitment() {
                   <div>
                     <h4 className="font-semibold text-slate-800 mb-4">Today's Interviews</h4>
                     <div className="space-y-4">
-                      {(interviews.length ? interviews : [
-                        { time: '10:00 AM', candidate: 'Alex Johnson', position: 'Senior Software Engineer', type: 'Technical Interview' },
-                        { time: '2:00 PM', candidate: 'Sarah Chen', position: 'Marketing Manager', type: 'Panel Interview' },
-                        { time: '4:30 PM', candidate: 'Michael Rodriguez', position: 'UX Designer', type: 'Portfolio Review' }
-                      ]).map((interview, index) => (
-                        <div key={interview.id || index} className="bg-white border border-slate-200 rounded-lg p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <h5 className="font-medium text-slate-800">{interview.candidate}</h5>
-                            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
-                              {interview.time || ''}
-                            </span>
-                          </div>
-                          <p className="text-sm text-slate-600 mb-1">{interview.position}</p>
-                          <p className="text-sm text-slate-500">{interview.type}</p>
-                          <div className="mt-3 flex space-x-2">
-                            <button onClick={() => { 
-                              if (!interview.id) return; 
-                              setInterviewEditing(interview); 
-                              setInterviewForm({ 
-                                candidate: interview.candidate || '', 
-                                position: interview.position || '', 
-                                date: interview.date || new Date().toISOString().slice(0,10), 
-                                time: interview.time || '10:00',
-                                interviewer: interview.interviewer || '',
-                                location: interview.location || '',
-                                status: interview.status || 'Scheduled'
-                              }); 
-                              setInterviewEditOpen(true); 
-                            }} className="text-orange-900 hover:text-orange-800 text-sm transition-colors">Edit</button>
-                            <button onClick={() => { if (!interview.id) return; setConfirmTitle('Delete Interview'); setConfirmMessage('Are you sure you want to delete this interview?'); setConfirmAction(() => async () => { const res = await fetch(`/api/interviews/${interview.id}`, { method: 'DELETE' }); if (res.ok) fetchInterviews(); setConfirmOpen(false); }); setConfirmOpen(true); }} className="text-red-900 hover:text-red-800 text-sm transition-colors">Delete</button>
-                          </div>
-                        </div>
-                      ))}
+                      {(() => {
+                        const today = new Date().toISOString().slice(0, 10);
+                        const todayInterviews = (interviews.length ? interviews : []).filter(i => {
+                          return i.date === today && (i.status || 'Scheduled') === 'Scheduled';
+                        }).sort((a, b) => {
+                          const timeA = a.time || '00:00';
+                          const timeB = b.time || '00:00';
+                          return timeA.localeCompare(timeB);
+                        });
+
+                        if (todayInterviews.length === 0) {
+                          return (
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-6 text-center">
+                              <p className="text-slate-500 text-sm mb-3">No interviews scheduled for today</p>
+                              <button 
+                                onClick={() => setInterviewAddOpen(true)} 
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm transition-colors"
+                              >
+                                Schedule Interview
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return todayInterviews.map((interview) => {
+                          const timeStr = interview.time || 'TBD';
+                          const formattedTime = timeStr.includes(':') 
+                            ? new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                            : timeStr;
+
+                          return (
+                            <div key={interview.id} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                              <div className="flex justify-between items-start mb-2">
+                                <h5 className="font-medium text-slate-800">{interview.candidate || 'Unknown Candidate'}</h5>
+                                <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">
+                                  ⏰ {formattedTime}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-600 mb-1">{interview.position || 'No position'}</p>
+                              {interview.type && (
+                                <p className="text-sm text-slate-500 mb-2">{interview.type}</p>
+                              )}
+                              {interview.location && (
+                                <p className="text-xs text-slate-400 mb-2">📍 {interview.location}</p>
+                              )}
+                              {interview.interviewer && (
+                                <p className="text-xs text-slate-500 mb-2">👤 {interview.interviewer}</p>
+                              )}
+                              <div className="mt-3 flex space-x-2">
+                                <button 
+                                  onClick={() => { 
+                                    setInterviewEditing(interview); 
+                                    setInterviewForm({ 
+                                      candidate: interview.candidate || '', 
+                                      position: interview.position || '', 
+                                      date: interview.date || new Date().toISOString().slice(0,10), 
+                                      time: interview.time || '10:00',
+                                      interviewer: interview.interviewer || '',
+                                      location: interview.location || '',
+                                      status: interview.status || 'Scheduled'
+                                    }); 
+                                    setInterviewEditOpen(true); 
+                                  }} 
+                                  className="flex-1 bg-orange-600 text-white px-3 py-1.5 rounded text-sm hover:bg-orange-700 transition-colors font-medium"
+                                >
+                                  ✏️ Edit
+                                </button>
+                                <button 
+                                  onClick={() => { 
+                                    setConfirmTitle('Delete Interview'); 
+                                    setConfirmMessage(`Are you sure you want to delete the interview with ${interview.candidate || 'this candidate'}?`); 
+                                    setConfirmAction(() => async () => { 
+                                      const res = await fetch(`/api/interviews/${interview.id}`, { method: 'DELETE' }); 
+                                      if (res.ok) {
+                                        fetchInterviews();
+                                        alert('✅ Interview deleted successfully.');
+                                      } else {
+                                        alert('❌ Failed to delete interview. Please try again.');
+                                      }
+                                      setConfirmOpen(false); 
+                                    }); 
+                                    setConfirmOpen(true); 
+                                  }} 
+                                  className="flex-1 bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700 transition-colors font-medium"
+                                >
+                                  🗑️ Delete
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
 
                   <div>
                     <h4 className="font-semibold text-slate-800 mb-4">Upcoming Interviews</h4>
                     <div className="space-y-4">
-                      {[
-                        { date: 'Tomorrow', candidate: 'Emily Davis', position: 'Data Analyst', time: '11:00 AM' },
-                        { date: 'Jan 25', candidate: 'David Kim', position: 'Product Manager', time: '3:00 PM' },
-                        { date: 'Jan 26', candidate: 'Lisa Wang', position: 'DevOps Engineer', time: '10:30 AM' }
-                      ].map((interview, index) => (
-                        <div key={index} className="bg-white border border-slate-200 rounded-lg p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <h5 className="font-medium text-slate-800">{interview.candidate}</h5>
-                            <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs">
-                              {interview.date}
-                            </span>
-                          </div>
-                          <p className="text-sm text-slate-600 mb-1">{interview.position}</p>
-                          <p className="text-sm text-slate-500">{interview.time}</p>
-                        </div>
-                      ))}
+                      {(() => {
+                        const now = new Date();
+                        const today = now.toISOString().slice(0, 10);
+                        const upcomingInterviews = (interviews.length ? interviews : []).filter(i => {
+                          if (!i.date) return false;
+                          const interviewDate = new Date(i.date);
+                          return interviewDate >= new Date(today) && (i.status || 'Scheduled') === 'Scheduled';
+                        }).sort((a, b) => {
+                          const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
+                          const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
+                          return dateA - dateB;
+                        }).slice(0, 5);
+
+                        if (upcomingInterviews.length === 0) {
+                          return (
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-6 text-center">
+                              <p className="text-slate-500 text-sm">No upcoming interviews scheduled</p>
+                              <button 
+                                onClick={() => setInterviewAddOpen(true)} 
+                                className="mt-3 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 text-sm transition-colors"
+                              >
+                                Schedule Interview
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return upcomingInterviews.map((interview, index) => {
+                          const interviewDate = new Date(interview.date);
+                          const todayDate = new Date(today);
+                          const tomorrowDate = new Date(todayDate);
+                          tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+                          
+                          let dateLabel = '';
+                          if (interviewDate.toISOString().slice(0, 10) === today) {
+                            dateLabel = 'Today';
+                          } else if (interviewDate.toISOString().slice(0, 10) === tomorrowDate.toISOString().slice(0, 10)) {
+                            dateLabel = 'Tomorrow';
+                          } else {
+                            dateLabel = interviewDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                          }
+
+                          const timeStr = interview.time || 'TBD';
+                          const formattedTime = timeStr.includes(':') ? new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : timeStr;
+
+                          return (
+                            <div key={interview.id || index} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                              <div className="flex justify-between items-start mb-2">
+                                <h5 className="font-medium text-slate-800">{interview.candidate || 'Unknown Candidate'}</h5>
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  dateLabel === 'Today' ? 'bg-red-100 text-red-800' :
+                                  dateLabel === 'Tomorrow' ? 'bg-orange-100 text-orange-800' :
+                                  'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {dateLabel}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-600 mb-1">{interview.position || 'No position'}</p>
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm text-slate-500">⏰ {formattedTime}</p>
+                                {interview.location && (
+                                  <p className="text-xs text-slate-400">📍 {interview.location}</p>
+                                )}
+                              </div>
+                              {interview.interviewer && (
+                                <p className="text-xs text-slate-500 mt-1">👤 Interviewer: {interview.interviewer}</p>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {activeTab === 'onboarding' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-black">Employee Onboarding</h3>
-                  <button onClick={async () => {
-                    const name = prompt('New hire name');
-                    if (!name) return;
-                    const position = prompt('Position') || '';
-                    const startDate = prompt('Start date (YYYY-MM-DD)', new Date().toISOString().slice(0,10));
-                    const tasks = [
-                      'Account Setup','IT Equipment Assignment','Company Orientation','Document Collection','Benefits Enrollment'
-                    ];
-                    for (const t of tasks) {
-                      await fetch('/api/onboarding', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_name: name, position, task: t, start_date: startDate }) });
-                    }
-                    fetchOnboarding();
-                    alert('Onboarding tasks created.');
-                  }} className="bg-green-900 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors">
-                    + Start Onboarding
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div>
-                    <h4 className="font-semibold text-slate-800 mb-4">New Hires (This Month)</h4>
-                    <div className="space-y-4">
-                      {[
-                        { name: 'Emily Davis', position: 'Data Analyst', startDate: 'Jan 15, 2024', progress: 80 },
-                        { name: 'David Kim', position: 'Product Manager', startDate: 'Jan 22, 2024', progress: 60 },
-                        { name: 'Lisa Wang', position: 'DevOps Engineer', startDate: 'Jan 29, 2024', progress: 40 }
-                      ].map((hire, index) => (
-                        <div key={index} className="bg-white border border-slate-200 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <h5 className="font-medium text-slate-800">{hire.name}</h5>
-                              <p className="text-sm text-slate-600">{hire.position}</p>
-                              <p className="text-xs text-slate-500">Start Date: {hire.startDate}</p>
-                            </div>
-                            <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                              {hire.progress}%
-                            </span>
-                          </div>
-                          <div className="w-full bg-slate-200 rounded-full h-2">
-                            <div 
-                              className="bg-green-600 h-2 rounded-full" 
-                              style={{ width: `${hire.progress}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="font-semibold text-slate-800 mb-4">Onboarding Checklist</h4>
-                    <div className="bg-white border border-slate-200 rounded-lg p-6">
-                      <div className="space-y-4">
-                        {(onboardingTasks.length ? onboardingTasks : []).map((task) => (
-                          <div key={task.id} className="flex items-center space-x-3">
-                            <button onClick={async () => {
-                              await fetch('/api/onboarding', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: task.id, updates: { completed: !task.completed } }) });
-                              fetchOnboarding();
-                            }} className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                              task.completed ? 'bg-green-500 border-green-500' : 'border-slate-300'
-                            }`}>
-                              {task.completed && <span className="text-white text-xs">✓</span>}
-                            </button>
-                            <span className={`text-sm ${task.completed ? 'text-slate-600 line-through' : 'text-slate-800'}`}>
-                              {task.task} {task.employee_name ? `• ${task.employee_name}` : ''}
-                            </span>
-                            <div className="ml-auto space-x-2">
-                              <button onClick={async () => {
-                                const newTask = prompt('Edit task', task.task) || task.task;
-                                await fetch('/api/onboarding', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: task.id, updates: { task: newTask } }) });
-                                fetchOnboarding();
-                              }} className="text-orange-900 hover:text-orange-800 text-sm transition-colors">Edit</button>
-                              <button onClick={async () => {
-                                if (!confirm('Delete task?')) return;
-                                await fetch(`/api/onboarding/${task.id}`, { method: 'DELETE' });
-                                fetchOnboarding();
-                              }} className="text-red-900 hover:text-red-800 text-sm transition-colors">Delete</button>
-                            </div>
-                          </div>
-                        ))}
-                        {onboardingTasks.length === 0 && (
-                          <div className="text-slate-500 text-sm">No onboarding tasks yet. Click "Start Onboarding" to create tasks.</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1310,28 +1427,5 @@ export default function Recruitment() {
       </form>
     </Modal>
 
-    <Modal open={onboardingStartOpen} title="Start Onboarding" onClose={() => setOnboardingStartOpen(false)}>
-      <form onSubmit={async (e) => { e.preventDefault(); const tasks = ['Account Setup','IT Equipment Assignment','Company Orientation','Document Collection','Benefits Enrollment']; for (const t of tasks) { await fetch('/api/onboarding', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_name: onboardingForm.employee_name, position: onboardingForm.position, task: t, start_date: onboardingForm.start_date }) }); } setOnboardingStartOpen(false); fetchOnboarding(); }} className="space-y-4">
-        <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="Employee name" value={onboardingForm.employee_name} onChange={(e) => handleOnboardingFormChange('employee_name', e.target.value)} required />
-        <div className="grid grid-cols-2 gap-3">
-          <input className="border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="Position" value={onboardingForm.position} onChange={(e) => handleOnboardingFormChange('position', e.target.value)} />
-          <input className="border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="YYYY-MM-DD" value={onboardingForm.start_date} onChange={(e) => handleOnboardingFormChange('start_date', e.target.value)} />
-        </div>
-        <div className="flex justify-end space-x-2">
-          <button type="button" onClick={()=>setOnboardingStartOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-black hover:bg-slate-50 transition-colors">Cancel</button>
-          <button type="submit" className="px-4 py-2 rounded-lg bg-green-900 text-white hover:bg-green-800 transition-colors">Create Tasks</button>
-        </div>
-      </form>
-    </Modal>
-
-    <Modal open={onboardingEditOpen} title="Edit Onboarding Task" onClose={() => setOnboardingEditOpen(false)}>
-      <form onSubmit={async (e) => { e.preventDefault(); if (!onboardingTaskEditing?.id) return; const newTask = onboardingTaskEditing.task; await fetch('/api/onboarding', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: onboardingTaskEditing.id, updates: { task: newTask } }) }); setOnboardingEditOpen(false); fetchOnboarding(); }} className="space-y-4">
-        <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="Task" value={onboardingTaskEditing?.task || ''} onChange={(e) => setOnboardingTaskEditing(prev => ({ ...prev, task: e.target.value }))} />
-        <div className="flex justify-end space-x-2">
-          <button type="button" onClick={()=>setOnboardingEditOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-black hover:bg-slate-50 transition-colors">Cancel</button>
-          <button type="submit" className="px-4 py-2 rounded-lg bg-orange-900 text-white hover:bg-orange-800 transition-colors">Save</button>
-        </div>
-      </form>
-    </Modal>
   </>);
 }

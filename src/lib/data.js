@@ -141,11 +141,26 @@ export async function savePayslips(payslips) {
 }
 
 export async function addPayslip(payslip) {
-	const payslips = await getPayslips();
-	const newPayslip = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...payslip };
-	payslips.push(newPayslip);
-	await savePayslips(payslips);
-	return newPayslip;
+    const payslips = await getPayslips();
+    // Use a stable identity for a payslip: prefer payroll_id if present, otherwise employee_id + issue_date
+    const matches = (p) => {
+        if (payslip.payroll_id && p.payroll_id) {
+            return String(p.payroll_id) === String(payslip.payroll_id);
+        }
+        return String(p.employee_id) === String(payslip.employee_id) && String(p.issue_date) === String(payslip.issue_date);
+    };
+    const existingIndex = payslips.findIndex(matches);
+    const upserted = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...payslip };
+    if (existingIndex >= 0) {
+        // Replace existing duplicate with the latest payload
+        // Preserve original id if present to avoid breaking references
+        upserted.id = payslips[existingIndex].id || upserted.id;
+        payslips[existingIndex] = { ...payslips[existingIndex], ...upserted };
+    } else {
+        payslips.push(upserted);
+    }
+    await savePayslips(payslips);
+    return upserted;
 }
 
 // Attendance data helpers

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import jsPDF from 'jspdf';
 import Link from 'next/link';
 
 export default function EmployeeRecords() {
@@ -30,6 +31,7 @@ export default function EmployeeRecords() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [newHistory, setNewHistory] = useState({ action: '', description: '', status: 'success' });
   const [addingHistory, setAddingHistory] = useState(false);
+  const [showResumeModal, setShowResumeModal] = useState(false);
 
   async function fetchEmployees() {
     setLoading(true);
@@ -188,6 +190,30 @@ export default function EmployeeRecords() {
     return department ? department.name : 'Unknown Department';
   }
 
+  function exportResumePdf(employee) {
+    if (!employee) return;
+    const pdf = new jsPDF();
+    const pageWidth = pdf.internal.pageSize.width;
+    let y = 20;
+    pdf.setFontSize(18);
+    pdf.text(`${employee.first_name || ''} ${employee.last_name || ''}`, pageWidth / 2, y, { align: 'center' });
+    y += 8;
+    pdf.setFontSize(11);
+    pdf.text(`${employee.job_title || ''}`, pageWidth / 2, y, { align: 'center' });
+    y += 10;
+    pdf.setFont(undefined, 'bold');
+    pdf.text('Contact', 14, y); y += 6; pdf.setFont(undefined, 'normal');
+    pdf.text(`Email/Phone: ${employee.contact_info || '—'}`, 14, y); y += 6;
+    pdf.text(`Address: ${employee.address || '—'}`, 14, y); y += 10;
+    pdf.setFont(undefined, 'bold'); pdf.text('Employment', 14, y); y += 6; pdf.setFont(undefined, 'normal');
+    pdf.text(`Department: ${employee.department || '—'}`, 14, y); y += 6;
+    pdf.text(`Job Title: ${employee.job_title || '—'}`, 14, y); y += 6;
+    pdf.text(`Employment Type: ${employee.employment_type || '—'}`, 14, y); y += 6;
+    pdf.text(`Hire Date: ${employee.hire_date || '—'}`, 14, y); y += 6;
+    pdf.text(`Status: ${employee.status || '—'}`, 14, y);
+    pdf.save(`Resume-${employee.first_name || ''}-${employee.last_name || ''}.pdf`);
+  }
+
   useEffect(() => { 
     fetchEmployees(); 
     fetchDepartments();
@@ -207,7 +233,7 @@ export default function EmployeeRecords() {
     { id: 'personal', label: 'Personal Info', icon: '👤' },
     { id: 'employment', label: 'Employment', icon: '💼' },
     { id: 'documents', label: 'Documents', icon: '📄' },
-    { id: 'history', label: 'History', icon: '📈' }
+    { id: 'resume', label: 'Resume', icon: '📑' },
   ];
 
   return (
@@ -389,9 +415,9 @@ export default function EmployeeRecords() {
                 {/* Tab Content */}
                 <div className="p-6">
                   {activeTab === 'overview' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div className="bg-slate-50 rounded-lg p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-6">
+                        <div className="bg-slate-50 rounded-lg p-6">
                           <h4 className="font-semibold text-slate-800 mb-2">Contact Information</h4>
                           <div className="space-y-2 text-sm text-black">
                             <p><span className="font-medium">Contact Info:</span> {selectedEmployee.contact_info}</p>
@@ -399,7 +425,7 @@ export default function EmployeeRecords() {
                             <p><span className="font-medium">Address:</span> {selectedEmployee.address || '—'}</p>
                           </div>
                         </div>
-                        <div className="bg-slate-50 rounded-lg p-4 text-black">
+                        <div className="bg-slate-50 rounded-lg p-6 text-black">
                           <h4 className="font-semibold text-slate-800 mb-2">Employment Details</h4>
                           <div className="space-y-2 text-sm">
                             <p><span className="font-medium">Hire Date:</span> {selectedEmployee.hire_date}</p>
@@ -408,8 +434,8 @@ export default function EmployeeRecords() {
                           </div>
                         </div>
                       </div>
-                      <div className="space-y-4">
-                        <div className="bg-white border border-green-200 rounded-lg p-4">
+                      <div className="space-y-6">
+                        <div className="bg-white border border-green-200 rounded-lg p-6">
                           <h4 className="font-semibold text-slate-800 mb-2">Partner Card</h4>
                           <p className="text-sm text-slate-600">Key partner details without redundant metrics.</p>
                           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -564,6 +590,39 @@ export default function EmployeeRecords() {
                     </div>
                   )}
 
+                  {activeTab === 'resume' && (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-slate-800">Resume</h4>
+                        <button onClick={() => exportResumePdf(selectedEmployee)} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Export PDF</button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="text-center mb-2">
+                            <div className="text-2xl font-bold text-black">{selectedEmployee.first_name} {selectedEmployee.last_name}</div>
+                            <div className="text-sm text-slate-600 text-black">{selectedEmployee.job_title}</div>
+                          </div>
+                          <div className="font-semibold mb-2 text-black">Contact</div>
+                          <div className="text-sm space-y-1 text-black">
+                            <div>Email/Phone: {selectedEmployee.contact_info || '—'}</div>
+                            <div>Address: {selectedEmployee.address || '—'}</div>
+                          </div>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <div className="font-semibold mb-2 text-black">Employment</div>
+                          <div className="text-sm space-y-1 text-black">
+                            <div>Department: {selectedEmployee.department || '—'}</div>
+                            <div>Job Title: {selectedEmployee.job_title || '—'}</div>
+                            <div>Employment Type: {selectedEmployee.employment_type || '—'}</div>
+                            <div>Hire Date: {selectedEmployee.hire_date || '—'}</div>
+                            <div>Status: {selectedEmployee.status || '—'}</div>
+                            <div>Employee ID: {selectedEmployee.employee_id}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {activeTab === 'history' && (
                     <div className="space-y-6">
                       <div className="flex justify-between items-center">
@@ -704,6 +763,47 @@ export default function EmployeeRecords() {
                 <button type="submit" disabled={addingHistory} className="px-4 py-2 bg-green-700 text-white rounded-md hover:bg-green-800 disabled:opacity-50">{addingHistory ? 'Adding…' : 'Add Event'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showResumeModal && selectedEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowResumeModal(false)}></div>
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-black">Resume</h3>
+              <button onClick={() => setShowResumeModal(false)} className="text-slate-600 hover:text-slate-900">✖</button>
+            </div>
+            <div className="space-y-4 text-black">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{selectedEmployee.first_name} {selectedEmployee.last_name}</div>
+                <div className="text-sm text-slate-600">{selectedEmployee.job_title}</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <div className="font-semibold mb-2">Contact</div>
+                  <div className="text-sm space-y-1">
+                    <div>Email/Phone: {selectedEmployee.contact_info || '—'}</div>
+                    <div>Address: {selectedEmployee.address || '—'}</div>
+                  </div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <div className="font-semibold mb-2">Employment</div>
+                  <div className="text-sm space-y-1">
+                    <div>Department: {selectedEmployee.department || '—'}</div>
+                    <div>Job Title: {selectedEmployee.job_title || '—'}</div>
+                    <div>Employment Type: {selectedEmployee.employment_type || '—'}</div>
+                    <div>Hire Date: {selectedEmployee.hire_date || '—'}</div>
+                    <div>Status: {selectedEmployee.status || '—'}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={() => setShowResumeModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">Close</button>
+                <button onClick={() => exportResumePdf(selectedEmployee)} className="px-4 py-2 bg-green-700 text-white rounded-md hover:bg-green-800">Export PDF</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

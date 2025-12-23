@@ -73,7 +73,8 @@ export default function Payroll() {
     const employeeById = new Map(employees.map(e => [String(e.id), e]));
     const rows = payrolls.map(p => {
       const emp = employeeById.get(String(p.employee_id));
-      const basicSalary = Number(p.salary_base || 0);
+      // Use salary_base if set, otherwise use default based on job title
+      const basicSalary = Number(p.salary_base || 0) || getEmployeeSalary(emp?.job_title);
       const bonus = Number(p.bonus || 0);
       const overtime = Number(p.overtime || 0);
       const deductions = Number(p.deductions || 0);
@@ -98,16 +99,17 @@ export default function Payroll() {
     for (const emp of employees) {
       const empId = String(emp.id);
       if (!existing.has(empId)) {
+        const defaultSalary = getEmployeeSalary(emp.job_title);
         rows.push({
           id: empId,
           employee_id: empId,
           employee: `${emp.first_name} ${emp.last_name}`,
           position: emp.job_title || '',
-          basicSalary: 0,
+          basicSalary: defaultSalary,
           overtime: 0,
           bonuses: 0,
           deductions: 0,
-          netPay: 0,
+          netPay: defaultSalary,
           status: 'Pending',
           payPeriod: '',
           hasPayroll: false,
@@ -118,6 +120,19 @@ export default function Payroll() {
     return rows;
   }, [payrolls, employees]);
 
+  // Helper to get employee salary based on job title
+  function getEmployeeSalary(jobTitle) {
+    const title = (jobTitle || '').toLowerCase();
+    if (title.includes('manager')) return 25000;
+    if (title.includes('barista')) return 17000;
+    return 15000; // Default for Employee
+  }
+
+  // Helper to format currency in peso
+  function formatPeso(amount) {
+    return `₱${Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
   // Helper to calculate overtime from attendance
   async function calculateOvertimeFromAttendance(employeeId, startDate, endDate) {
     try {
@@ -127,6 +142,23 @@ export default function Payroll() {
     } catch (error) {
       console.error('Failed to calculate overtime:', error);
       return 0;
+    }
+  }
+
+  // Helper to get attendance data for payslip
+  async function getAttendanceForPayslip(employeeId, startDate, endDate) {
+    try {
+      const res = await fetch(`/api/attendance?employee_id=${employeeId}&start_date=${startDate}&end_date=${endDate}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const totalHours = data.reduce((sum, record) => sum + Number(record.hours_worked || 0), 0);
+        const totalDays = data.filter(r => r.time_in).length;
+        return { totalHours, totalDays, records: data };
+      }
+      return { totalHours: 0, totalDays: 0, records: [] };
+    } catch (error) {
+      console.error('Failed to get attendance:', error);
+      return { totalHours: 0, totalDays: 0, records: [] };
     }
   }
 
@@ -184,17 +216,27 @@ export default function Payroll() {
 
   async function submitAddPayroll(e) {
     e?.preventDefault?.();
-    if (!addForm.employee_id || !addForm.end_date || !addForm.salary_base) return;
+    if (!addForm.employee_id || !addForm.end_date) return;
     setAdding(true);
     try {
+      const employee = employees.find(e => e.id === addForm.employee_id);
+      // Use provided salary_base or default based on job title
+      const salaryBase = Number(addForm.salary_base || 0) || getEmployeeSalary(employee?.job_title);
+      
       let overtimeVal = addForm.overtime;
       if (overtimeVal === '' && addForm.start_date && addForm.end_date) {
         overtimeVal = await calculateOvertimeFromAttendance(addForm.employee_id, addForm.start_date, addForm.end_date);
       }
+      
+      // Get attendance data for payslip
+      const attendanceData = addForm.start_date && addForm.end_date 
+        ? await getAttendanceForPayslip(addForm.employee_id, addForm.start_date, addForm.end_date)
+        : { totalHours: 0, totalDays: 0, records: [] };
+      
       const body = {
         payroll_id: crypto.randomUUID(),
         employee_id: addForm.employee_id,
-        salary_base: Number(addForm.salary_base || 0),
+        salary_base: salaryBase,
         bonus: Number(addForm.bonus || 0),
         overtime: Number(overtimeVal || 0),
         deductions: Number(addForm.deductions || 0),
@@ -204,7 +246,7 @@ export default function Payroll() {
       const res = await fetch('/api/payroll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error('Failed');
       const created = await res.json();
-      // Immediately create a payslip so it appears under Payslips
+      // Immediately create a payslip so it appears under Payslips with attendance data
       const payslipPayload = {
         payslip_id: crypto.randomUUID(),
         payroll_id: created.id || created.payroll_id || body.payroll_id,
@@ -216,6 +258,11 @@ export default function Payroll() {
           overtime: body.overtime,
           deductions: body.deductions,
           net: body.salary_base + body.bonus + body.overtime - body.deductions
+        },
+        attendance: {
+          totalHours: attendanceData.totalHours,
+          totalDays: attendanceData.totalDays,
+          records: attendanceData.records
         }
       };
       await fetch('/api/payslips', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payslipPayload) });
@@ -233,10 +280,12 @@ export default function Payroll() {
     let payrollDate = row.payPeriod || new Date().toISOString().slice(0,10);
     // If this row is a placeholder without a payroll record, create one first
     if (!row.hasPayroll) {
+      const employee = employees.find(e => e.id === row.employee_id);
+      const salaryBase = Number(row.basicSalary || 0) || getEmployeeSalary(employee?.job_title);
       const createBody = {
         payroll_id: crypto.randomUUID(),
         employee_id: row.employee_id,
-        salary_base: Number(row.basicSalary || 0),
+        salary_base: salaryBase,
         bonus: Number(row.bonuses || 0),
         overtime: Number(row.overtime || 0),
         deductions: Number(row.deductions || 0),
@@ -251,6 +300,12 @@ export default function Payroll() {
       }
     }
 
+    // Get attendance data for the pay period (assuming monthly, adjust as needed)
+    const startDate = new Date(payrollDate);
+    startDate.setDate(1); // First day of month
+    const endDate = new Date(payrollDate);
+    const attendanceData = await getAttendanceForPayslip(row.employee_id, startDate.toISOString().slice(0,10), endDate.toISOString().slice(0,10));
+
     const payload = {
       payslip_id: crypto.randomUUID(),
       payroll_id: payrollId,
@@ -262,6 +317,11 @@ export default function Payroll() {
         overtime: row.overtime,
         deductions: row.deductions,
         net: row.netPay
+      },
+      attendance: {
+        totalHours: attendanceData.totalHours,
+        totalDays: attendanceData.totalDays,
+        records: attendanceData.records
       }
     };
     const res = await fetch('/api/payslips', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -282,7 +342,7 @@ export default function Payroll() {
         }
       }
       await fetchPayrolls();
-      alert(`Payroll processed successfully. Total amount: $${totalAmount.toLocaleString()}`);
+      alert(`Payroll processed successfully. Total amount: ${formatPeso(totalAmount)}`);
     } finally {
       setProcessing(false);
     }
@@ -322,11 +382,11 @@ export default function Payroll() {
           yPos = 20;
         }
         pdf.text(row.employee || 'Unknown', 14, yPos, { maxWidth: 45 });
-        pdf.text(`$${row.basicSalary.toLocaleString()}`, 60, yPos);
-        pdf.text(`$${row.overtime.toLocaleString()}`, 100, yPos);
-        pdf.text(`$${row.bonuses.toLocaleString()}`, 130, yPos);
-        pdf.text(`-$${row.deductions.toLocaleString()}`, 160, yPos);
-        pdf.text(`$${row.netPay.toLocaleString()}`, 190, yPos);
+        pdf.text(`₱${row.basicSalary.toLocaleString()}`, 60, yPos);
+        pdf.text(`₱${row.overtime.toLocaleString()}`, 100, yPos);
+        pdf.text(`₱${row.bonuses.toLocaleString()}`, 130, yPos);
+        pdf.text(`-₱${row.deductions.toLocaleString()}`, 160, yPos);
+        pdf.text(`₱${row.netPay.toLocaleString()}`, 190, yPos);
         yPos += 8;
       });
 
@@ -346,13 +406,24 @@ export default function Payroll() {
         
         pdf.setFontSize(10);
         pdf.setFont(undefined, 'normal');
+        const now = new Date();
+        pdf.text(`Generated: ${now.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 14, yPos);
+        yPos += 5;
         pdf.text(`Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}`, 14, yPos);
+        yPos += 5;
+        pdf.text(`Position: ${employee?.job_title || 'N/A'}`, 14, yPos);
         yPos += 5;
         pdf.text(`Employee ID: ${employee?.employee_id || 'N/A'}`, 14, yPos);
         yPos += 5;
         pdf.text(`Issue Date: ${payslip.issue_date}`, 14, yPos);
         yPos += 5;
         pdf.text(`Payslip ID: ${payslip.payslip_id}`, 14, yPos);
+        if (payslip.attendance) {
+          yPos += 5;
+          pdf.text(`Days Worked: ${payslip.attendance.totalDays || 0}`, 14, yPos);
+          yPos += 5;
+          pdf.text(`Total Hours: ${(payslip.attendance.totalHours || 0).toFixed(2)}h`, 14, yPos);
+        }
         yPos += 10;
 
         pdf.setFontSize(12);
@@ -361,13 +432,13 @@ export default function Payroll() {
         yPos += 8;
         pdf.setFontSize(10);
         pdf.setFont(undefined, 'normal');
-        pdf.text(`Basic Pay: $${(amounts.basic || 0).toLocaleString()}`, 20, yPos);
+        pdf.text(`Basic Pay: ₱${(amounts.basic || 0).toLocaleString()}`, 20, yPos);
         yPos += 5;
-        pdf.text(`Overtime: $${(amounts.overtime || 0).toLocaleString()}`, 20, yPos);
+        pdf.text(`Overtime: ₱${(amounts.overtime || 0).toLocaleString()}`, 20, yPos);
         yPos += 5;
-        pdf.text(`Bonus: $${(amounts.bonus || 0).toLocaleString()}`, 20, yPos);
+        pdf.text(`Bonus: ₱${(amounts.bonus || 0).toLocaleString()}`, 20, yPos);
         yPos += 5;
-        pdf.text(`Total Earnings: $${((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0)).toLocaleString()}`, 20, yPos);
+        pdf.text(`Total Earnings: ₱${((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0)).toLocaleString()}`, 20, yPos);
         yPos += 10;
 
         pdf.setFontSize(12);
@@ -376,12 +447,12 @@ export default function Payroll() {
         yPos += 8;
         pdf.setFontSize(10);
         pdf.setFont(undefined, 'normal');
-        pdf.text(`Deductions: -$${(amounts.deductions || 0).toLocaleString()}`, 20, yPos);
+        pdf.text(`Deductions: -₱${(amounts.deductions || 0).toLocaleString()}`, 20, yPos);
         yPos += 10;
 
         pdf.setFontSize(14);
         pdf.setFont(undefined, 'bold');
-        pdf.text(`NET PAY: $${(amounts.net || 0).toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
+        pdf.text(`NET PAY: ₱${(amounts.net || 0).toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
       });
 
       pdf.save('payslips-november.pdf');
@@ -465,7 +536,7 @@ export default function Payroll() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-600">Monthly Payroll</p>
-                <p className="text-2xl font-bold text-slate-800">${(payrollStats.totalPayroll / 1000).toFixed(0)}k</p>
+                <p className="text-2xl font-bold text-slate-800">{formatPeso(payrollStats.totalPayroll)}</p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                 <span className="text-2xl">💰</span>
@@ -477,7 +548,7 @@ export default function Payroll() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-600">Avg Salary</p>
-                <p className="text-2xl font-bold text-slate-800">${(payrollStats.averageSalary / 1000).toFixed(0)}k</p>
+                <p className="text-2xl font-bold text-slate-800">{formatPeso(payrollStats.averageSalary)}</p>
               </div>
               <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                 <span className="text-2xl">📊</span>
@@ -580,19 +651,19 @@ export default function Payroll() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                            ${employee.basicSalary.toLocaleString()}
+                            {formatPeso(employee.basicSalary)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                            ${employee.overtime.toLocaleString()}
+                            {formatPeso(employee.overtime)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                            ${employee.bonuses.toLocaleString()}
+                            {formatPeso(employee.bonuses)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
-                            -${employee.deductions.toLocaleString()}
+                            -{formatPeso(employee.deductions)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                            ${employee.netPay.toLocaleString()}
+                            {formatPeso(employee.netPay)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -637,11 +708,11 @@ export default function Payroll() {
                         </div>
                       <div className="flex justify-between items-center">
                         <span className="text-lg text-slate-700">Total Gross Pay:</span>
-                        <span className="text-2xl font-bold text-black">${payrollStats.totalPayroll.toLocaleString()}</span>
+                        <span className="text-2xl font-bold text-black">{formatPeso(payrollStats.totalPayroll)}</span>
                         </div>
                       <div className="flex justify-between items-center border-t pt-4">
                         <span className="text-xl font-bold text-slate-800">Net Pay:</span>
-                        <span className="text-3xl font-bold text-orange-700">${payrollStats.totalPayroll.toLocaleString()}</span>
+                        <span className="text-3xl font-bold text-orange-700">{formatPeso(payrollStats.totalPayroll)}</span>
                       </div>
                       <button onClick={processPayrollRun} disabled={processing} className="w-full bg-orange-600 text-white py-3 px-6 rounded-lg hover:bg-orange-700 text-lg font-semibold mt-6 disabled:opacity-50">
                         {processing ? 'Processing...' : 'Process Payroll & Export All Salaries'}
@@ -707,44 +778,57 @@ export default function Payroll() {
                               {payslip.issue_date}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                              ${(amounts.basic || 0).toLocaleString()}
+                              {formatPeso(amounts.basic || 0)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                              ${(amounts.overtime || 0).toLocaleString()}
+                              {formatPeso(amounts.overtime || 0)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                              ${(amounts.bonus || 0).toLocaleString()}
+                              {formatPeso(amounts.bonus || 0)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
-                              -${(amounts.deductions || 0).toLocaleString()}
+                              -{formatPeso(amounts.deductions || 0)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                              ${(amounts.net || 0).toLocaleString()}
+                              {formatPeso(amounts.net || 0)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                               <button 
                                 onClick={() => {
-                                  // Create a simple text-based payslip download
+                                  // Create a simple text-based payslip download with real-time date and attendance
+                                  const now = new Date();
+                                  const currentDateTime = now.toLocaleString('en-US', { 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric', 
+                                    hour: '2-digit', 
+                                    minute: '2-digit' 
+                                  });
+                                  const attendanceInfo = payslip.attendance 
+                                    ? `\nATTENDANCE:\n----------\nTotal Days Worked: ${payslip.attendance.totalDays || 0}\nTotal Hours: ${(payslip.attendance.totalHours || 0).toFixed(2)}h\n`
+                                    : '';
                                   const payslipText = `
 PAYSLIP
 ========
+Generated: ${currentDateTime}
 Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}
 Employee ID: ${employee?.employee_id || 'N/A'}
+Position: ${employee?.job_title || 'N/A'}
 Issue Date: ${payslip.issue_date}
 Payslip ID: ${payslip.payslip_id}
-
+${attendanceInfo}
 EARNINGS:
 ---------
-Basic Pay:     $${(amounts.basic || 0).toLocaleString()}
-Overtime:      $${(amounts.overtime || 0).toLocaleString()}
-Bonus:         $${(amounts.bonus || 0).toLocaleString()}
-Total Earnings: $${((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0)).toLocaleString()}
+Basic Pay:     ${formatPeso(amounts.basic || 0)}
+Overtime:      ${formatPeso(amounts.overtime || 0)}
+Bonus:         ${formatPeso(amounts.bonus || 0)}
+Total Earnings: ${formatPeso((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0))}
 
 DEDUCTIONS:
 -----------
-Deductions:    -$${(amounts.deductions || 0).toLocaleString()}
+Deductions:    -${formatPeso(amounts.deductions || 0)}
 
-NET PAY:       $${(amounts.net || 0).toLocaleString()}
+NET PAY:       ${formatPeso(amounts.net || 0)}
                                   `;
                                   const blob = new Blob([payslipText], { type: 'text/plain' });
                                   const url = URL.createObjectURL(blob);
@@ -916,8 +1000,13 @@ NET PAY:       $${(amounts.net || 0).toLocaleString()}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700">Salary Base</label>
-                <input type="number" min="0" value={addForm.salary_base} onChange={(e)=>setAddForm({...addForm, salary_base: e.target.value})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-orange-600 focus:ring-orange-600 text-black" placeholder="50000" />
+                <label className="block text-sm font-medium text-slate-700">Salary Base (₱)</label>
+                <input type="number" min="0" value={addForm.salary_base} onChange={(e)=>setAddForm({...addForm, salary_base: e.target.value})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-orange-600 focus:ring-orange-600 text-black" placeholder="Auto-set by position" />
+                {addForm.employee_id && (() => {
+                  const emp = employees.find(e => e.id === addForm.employee_id);
+                  const defaultSalary = getEmployeeSalary(emp?.job_title);
+                  return <p className="text-xs text-slate-500 mt-1">Default for {emp?.job_title || 'Employee'}: {formatPeso(defaultSalary)}</p>;
+                })()}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -939,15 +1028,15 @@ NET PAY:       $${(amounts.net || 0).toLocaleString()}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700">Bonus</label>
+                <label className="block text-sm font-medium text-slate-700">Bonus (₱)</label>
                 <input type="number" min="0" value={addForm.bonus} onChange={(e)=>setAddForm({...addForm, bonus: e.target.value})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-orange-600 focus:ring-orange-600 text-black" placeholder="0" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700">Overtime</label>
+                <label className="block text-sm font-medium text-slate-700">Overtime (₱)</label>
                 <input type="number" min="0" value={addForm.overtime} onChange={(e)=>setAddForm({...addForm, overtime: e.target.value})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-orange-600 focus:ring-orange-600 text-black" placeholder="0" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700">Deductions</label>
+                <label className="block text-sm font-medium text-slate-700">Deductions (₱)</label>
                 <input type="number" min="0" value={addForm.deductions} onChange={(e)=>setAddForm({...addForm, deductions: e.target.value})} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-orange-600 focus:ring-orange-600 text-black" placeholder="0" />
               </div>
             </div>
@@ -974,49 +1063,57 @@ NET PAY:       $${(amounts.net || 0).toLocaleString()}
             return (
               <div className="space-y-4">
                 <div className="border-b pb-4">
-                  <div className="text-2xl font-bold text-center mb-4">PAYSLIP</div>
-                  <div className="space-y-2 text-sm">
+                  <div className="text-2xl font-bold text-center mb-4 text-black">PAYSLIP</div>
+                  <div className="space-y-2 text-sm text-black">
+                    <p><span className="font-medium">Generated:</span> {new Date().toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                     <p><span className="font-medium">Employee:</span> {employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}</p>
+                    <p><span className="font-medium">Position:</span> {employee?.job_title || 'N/A'}</p>
                     <p><span className="font-medium">Employee ID:</span> {employee?.employee_id || 'N/A'}</p>
                     <p><span className="font-medium">Issue Date:</span> {selectedPayslip.issue_date}</p>
                     <p><span className="font-medium">Payslip ID:</span> {selectedPayslip.payslip_id}</p>
+                    {selectedPayslip.attendance && (
+                      <>
+                        <p><span className="font-medium">Days Worked:</span> {selectedPayslip.attendance.totalDays || 0}</p>
+                        <p><span className="font-medium">Total Hours:</span> {(selectedPayslip.attendance.totalHours || 0).toFixed(2)}h</p>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-4">
                   <div>
                     <h4 className="font-bold text-slate-800 mb-2">EARNINGS:</h4>
-                    <div className="space-y-1 ml-4">
+                    <div className="space-y-1 ml-4 text-black">
                       <div className="flex justify-between">
                         <span>Basic Pay:</span>
-                        <span className="font-medium">${(amounts.basic || 0).toLocaleString()}</span>
+                        <span className="font-medium">{formatPeso(amounts.basic || 0)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Overtime:</span>
-                        <span className="font-medium">${(amounts.overtime || 0).toLocaleString()}</span>
+                        <span className="font-medium">{formatPeso(amounts.overtime || 0)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Bonus:</span>
-                        <span className="font-medium">${(amounts.bonus || 0).toLocaleString()}</span>
+                        <span className="font-medium">{formatPeso(amounts.bonus || 0)}</span>
                       </div>
                       <div className="flex justify-between border-t pt-1">
                         <span className="font-medium">Total Earnings:</span>
-                        <span className="font-bold">${((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0)).toLocaleString()}</span>
+                        <span className="font-bold">{formatPeso((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0))}</span>
                       </div>
                     </div>
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-800 mb-2">DEDUCTIONS:</h4>
-                    <div className="ml-4">
+                    <div className="ml-4 text-black">
                       <div className="flex justify-between">
                         <span>Deductions:</span>
-                        <span className="font-medium text-red-600">-${(amounts.deductions || 0).toLocaleString()}</span>
+                        <span className="font-medium text-red-600">-{formatPeso(amounts.deductions || 0)}</span>
                       </div>
                     </div>
                   </div>
                   <div className="border-t-2 pt-4">
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center text-black">
                       <span className="text-lg font-bold">NET PAY:</span>
-                      <span className="text-2xl font-bold text-green-600">${(amounts.net || 0).toLocaleString()}</span>
+                      <span className="text-2xl font-bold text-green-600">{formatPeso(amounts.net || 0)}</span>
                     </div>
                   </div>
                 </div>
