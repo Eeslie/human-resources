@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import jsPDF from 'jspdf';
 
 export default function Payroll() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -28,8 +27,6 @@ export default function Payroll() {
   const [payslipsPage, setPayslipsPage] = useState(1);
   const pageSize = 6;
   const modalCheckId = useRef(0);
-  const [showPayslipModal, setShowPayslipModal] = useState(false);
-  const [selectedPayslip, setSelectedPayslip] = useState(null);
 
   // Fetch helpers
   async function fetchEmployees() {
@@ -65,6 +62,8 @@ export default function Payroll() {
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'process', label: 'Process Payroll', icon: '⚡' },
     { id: 'payslips', label: 'Payslips', icon: '📄' },
+    { id: 'history', label: 'Payroll History', icon: '📈' },
+    { id: 'reports', label: 'Reports', icon: '📋' },
     { id: 'settings', label: 'Settings', icon: '⚙️' }
   ];
 
@@ -332,130 +331,17 @@ export default function Payroll() {
     if (!payrollRows.length) return alert('No payroll entries to process');
     setProcessing(true);
     try {
-      let totalAmount = 0;
       for (const row of payrollRows) {
         await generatePayslipFor(row);
         // Only update status for real payroll rows; placeholders will have been created inside generatePayslipFor
         if (row.hasPayroll) {
-          await fetch(`/api/payroll/${row.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Approved' }) });
-          totalAmount += row.netPay;
+          await fetch(`/api/payroll/${row.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Processed' }) });
         }
       }
       await fetchPayrolls();
-      alert(`Payroll processed successfully. Total amount: ${formatPeso(totalAmount)}`);
+      alert('Payroll processed and payslips generated.');
     } finally {
       setProcessing(false);
-    }
-  }
-
-  function exportPayrollToPDF(type) {
-    const pdf = new jsPDF();
-    const pageWidth = pdf.internal.pageSize.width;
-    const pageHeight = pdf.internal.pageSize.height;
-    let yPos = 20;
-
-    // Add header
-    pdf.setFontSize(18);
-    pdf.text('Payroll Report', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 10;
-    pdf.setFontSize(12);
-    pdf.text('November 2024', pageWidth / 2, yPos, { align: 'center' });
-    yPos += 15;
-
-    if (type === 'overview') {
-      // Export overview payroll data
-      pdf.setFontSize(12);
-      pdf.setFont(undefined, 'bold');
-      pdf.text('Employee', 14, yPos);
-      pdf.text('Basic Salary', 60, yPos);
-      pdf.text('Overtime', 100, yPos);
-      pdf.text('Bonuses', 130, yPos);
-      pdf.text('Deductions', 160, yPos);
-      pdf.text('Net Pay', 190, yPos);
-      yPos += 8;
-      pdf.setFontSize(10);
-      pdf.setFont(undefined, 'normal');
-
-      payrollRows.forEach((row) => {
-        if (yPos > pageHeight - 20) {
-          pdf.addPage();
-          yPos = 20;
-        }
-        pdf.text(row.employee || 'Unknown', 14, yPos, { maxWidth: 45 });
-        pdf.text(`₱${row.basicSalary.toLocaleString()}`, 60, yPos);
-        pdf.text(`₱${row.overtime.toLocaleString()}`, 100, yPos);
-        pdf.text(`₱${row.bonuses.toLocaleString()}`, 130, yPos);
-        pdf.text(`-₱${row.deductions.toLocaleString()}`, 160, yPos);
-        pdf.text(`₱${row.netPay.toLocaleString()}`, 190, yPos);
-        yPos += 8;
-      });
-
-      pdf.save('payroll-overview-november.pdf');
-    } else if (type === 'payslips') {
-      // Export payslips
-      payslips.forEach((payslip, index) => {
-        if (index > 0) pdf.addPage();
-        yPos = 20;
-        const employee = employees.find(e => e.id === payslip.employee_id);
-        const amounts = payslip.amounts || {};
-        
-        pdf.setFontSize(16);
-        pdf.setFont(undefined, 'bold');
-        pdf.text('PAYSLIP', pageWidth / 2, yPos, { align: 'center' });
-        yPos += 10;
-        
-        pdf.setFontSize(10);
-        pdf.setFont(undefined, 'normal');
-        const now = new Date();
-        pdf.text(`Generated: ${now.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 14, yPos);
-        yPos += 5;
-        pdf.text(`Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}`, 14, yPos);
-        yPos += 5;
-        pdf.text(`Position: ${employee?.job_title || 'N/A'}`, 14, yPos);
-        yPos += 5;
-        pdf.text(`Employee ID: ${employee?.employee_id || 'N/A'}`, 14, yPos);
-        yPos += 5;
-        pdf.text(`Issue Date: ${payslip.issue_date}`, 14, yPos);
-        yPos += 5;
-        pdf.text(`Payslip ID: ${payslip.payslip_id}`, 14, yPos);
-        if (payslip.attendance) {
-          yPos += 5;
-          pdf.text(`Days Worked: ${payslip.attendance.totalDays || 0}`, 14, yPos);
-          yPos += 5;
-          pdf.text(`Total Hours: ${(payslip.attendance.totalHours || 0).toFixed(2)}h`, 14, yPos);
-        }
-        yPos += 10;
-
-        pdf.setFontSize(12);
-        pdf.setFont(undefined, 'bold');
-        pdf.text('EARNINGS:', 14, yPos);
-        yPos += 8;
-        pdf.setFontSize(10);
-        pdf.setFont(undefined, 'normal');
-        pdf.text(`Basic Pay: ₱${(amounts.basic || 0).toLocaleString()}`, 20, yPos);
-        yPos += 5;
-        pdf.text(`Overtime: ₱${(amounts.overtime || 0).toLocaleString()}`, 20, yPos);
-        yPos += 5;
-        pdf.text(`Bonus: ₱${(amounts.bonus || 0).toLocaleString()}`, 20, yPos);
-        yPos += 5;
-        pdf.text(`Total Earnings: ₱${((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0)).toLocaleString()}`, 20, yPos);
-        yPos += 10;
-
-        pdf.setFontSize(12);
-        pdf.setFont(undefined, 'bold');
-        pdf.text('DEDUCTIONS:', 14, yPos);
-        yPos += 8;
-        pdf.setFontSize(10);
-        pdf.setFont(undefined, 'normal');
-        pdf.text(`Deductions: -₱${(amounts.deductions || 0).toLocaleString()}`, 20, yPos);
-        yPos += 10;
-
-        pdf.setFontSize(14);
-        pdf.setFont(undefined, 'bold');
-        pdf.text(`NET PAY: ₱${(amounts.net || 0).toLocaleString()}`, pageWidth / 2, yPos, { align: 'center' });
-      });
-
-      pdf.save('payslips-november.pdf');
     }
   }
 
@@ -463,8 +349,8 @@ export default function Payroll() {
     const totalEmployees = employees.length;
     const totalPayroll = payrollRows.reduce((sum, r) => sum + r.netPay, 0);
     const averageSalary = payrollRows.length ? Math.round(totalPayroll / payrollRows.length) : 0;
-    const processedThisMonth = payrollRows.filter(r => r.status === 'Processed' || r.status === 'Approved').length;
-    const pendingApproval = payrollRows.filter(r => r.status !== 'Processed' && r.status !== 'Approved').length;
+    const processedThisMonth = payrollRows.filter(r => r.status === 'Processed').length;
+    const pendingApproval = payrollRows.filter(r => r.status !== 'Processed').length;
     return { totalEmployees, totalPayroll, averageSalary, processedThisMonth, pendingApproval };
   }, [employees, payrollRows]);
 
@@ -608,7 +494,7 @@ export default function Payroll() {
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-center relative z-10">
-                  <h3 className="text-xl font-bold text-slate-800">November</h3>
+                  <h3 className="text-xl font-bold text-slate-800">Current Payroll Period:</h3>
                   <div className="flex space-x-3">
                     <button type="button" onClick={() => addPayrollLine()} className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 pointer-events-auto">
                       + Add Entry
@@ -616,7 +502,7 @@ export default function Payroll() {
                     <button onClick={processPayrollRun} disabled={processing} className={`px-4 py-2 rounded-lg text-white ${processing ? 'bg-orange-400' : 'bg-orange-600 hover:bg-orange-700'}`}>
                       {processing ? 'Processing…' : 'Process Payroll'}
                     </button>
-                    <button onClick={() => exportPayrollToPDF('overview')} className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">
+                    <button className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">
                       Export Data
                     </button>
                   </div>
@@ -667,7 +553,7 @@ export default function Payroll() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              employee.status === 'Approved' || employee.status === 'Processed'
+                              employee.status === 'Processed' 
                                 ? 'bg-green-100 text-green-800' 
                                 : 'bg-orange-100 text-orange-800'
                             }`}>
@@ -699,24 +585,67 @@ export default function Payroll() {
             {activeTab === 'process' && (
               <div className="space-y-6">
                 <div className="bg-gradient-to-r from-orange-50 to-orange-50 rounded-lg p-6">
-                  <h3 className="text-xl font-bold text-slate-800 mb-4">Process Payroll - November 2024</h3>
-                  <div className="bg-white rounded-lg p-6 shadow-sm">
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <span className="text-lg text-slate-700">Total Employees:</span>
-                        <span className="text-2xl font-bold text-black">{payrollStats.totalEmployees}</span>
+                  <h3 className="text-xl font-bold text-slate-800 mb-4">Payroll Processing Wizard</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white rounded-lg p-4 shadow-sm">
+                      <h4 className="font-semibold text-slate-800 mb-2">Step 1: Select Period</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700">Pay Period</label>
+                          <select className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black">
+                            <option>January 2024</option>
+                            <option>February 2024</option>
+                            <option>March 2024</option>
+                          </select>
                         </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-lg text-slate-700">Total Gross Pay:</span>
-                        <span className="text-2xl font-bold text-black">{formatPeso(payrollStats.totalPayroll)}</span>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700">Pay Date</label>
+                          <input type="date" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black" defaultValue="2024-01-31" />
                         </div>
-                      <div className="flex justify-between items-center border-t pt-4">
-                        <span className="text-xl font-bold text-slate-800">Net Pay:</span>
-                        <span className="text-3xl font-bold text-orange-700">{formatPeso(payrollStats.totalPayroll)}</span>
                       </div>
-                      <button onClick={processPayrollRun} disabled={processing} className="w-full bg-orange-600 text-white py-3 px-6 rounded-lg hover:bg-orange-700 text-lg font-semibold mt-6 disabled:opacity-50">
-                        {processing ? 'Processing...' : 'Process Payroll & Export All Salaries'}
+                    </div>
+
+                    <div className="bg-white rounded-lg p-4 shadow-sm">
+                      <h4 className="font-semibold text-slate-800 mb-2">Step 2: Review Data</h4>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-slate-600">Total Employees:</span>
+                          <span className="font-medium text-black">156</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-slate-600">Total Gross Pay:</span>
+                          <span className="font-medium text-black">$1,245,000</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-slate-600">Total Deductions:</span>
+                          <span className="font-medium text-black">$187,500</span>
+                        </div>
+                        <div className="flex justify-between border-t pt-2">
+                          <span className="text-sm font-semibold text-slate-800">Net Pay:</span>
+                          <span className="font-bold text-orange-700 text-black">$1,057,500</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg p-4 shadow-sm">
+                      <h4 className="font-semibold text-slate-800 mb-2">Step 3: Process</h4>
+                      <div className="space-y-3">
+                        <div className="flex items-center">
+                          <input type="checkbox" className="rounded border-slate-300 text-black" />
+                          <label className="ml-2 text-sm text-slate-700">Generate payslips</label>
+                        </div>
+                        <div className="flex items-center">
+                          <input type="checkbox" className="rounded border-slate-300 text-black" />
+                          <label className="ml-2 text-sm text-slate-700">Send notifications</label>
+                        </div>
+                        <div className="flex items-center">
+                          <input type="checkbox" className="rounded border-slate-300 text-black" />
+                          <label className="ml-2 text-sm text-slate-700">Update bank transfers</label>
+                        </div>
+                        <button className="w-full bg-orange-600 text-white py-2 rounded-lg hover:bg-green-700 mt-4">
+                          Process Payroll
                         </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -731,7 +660,7 @@ export default function Payroll() {
                     <button onClick={() => fetchPayslips()} className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">
                       Refresh
                     </button>
-                    <button onClick={() => exportPayrollToPDF('payslips')} className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
+                    <button className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
                       Export All
                     </button>
                   </div>
@@ -844,8 +773,28 @@ NET PAY:       ${formatPeso(amounts.net || 0)}
                               </button>
                               <button 
                                 onClick={() => {
-                                  setSelectedPayslip(payslip);
-                                  setShowPayslipModal(true);
+                                  const payslipText = `
+PAYSLIP
+========
+Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}
+Employee ID: ${employee?.employee_id || 'N/A'}
+Issue Date: ${payslip.issue_date}
+Payslip ID: ${payslip.payslip_id}
+
+EARNINGS:
+---------
+Basic Pay:     $${(amounts.basic || 0).toLocaleString()}
+Overtime:      $${(amounts.overtime || 0).toLocaleString()}
+Bonus:         $${(amounts.bonus || 0).toLocaleString()}
+Total Earnings: $${((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0)).toLocaleString()}
+
+DEDUCTIONS:
+-----------
+Deductions:    -$${(amounts.deductions || 0).toLocaleString()}
+
+NET PAY:       $${(amounts.net || 0).toLocaleString()}
+                                  `;
+                                  alert(payslipText);
                                 }}
                                 className="text-green-600 hover:text-green-900"
                               >
@@ -878,6 +827,99 @@ NET PAY:       ${formatPeso(amounts.net || 0)}
               </div>
             )}
 
+            {activeTab === 'history' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-bold text-slate-800">Payroll History</h3>
+                  <div className="flex space-x-3">
+                    <select className="border border-slate-300 rounded-lg px-3 py-2 text-black">
+                      <option>All Periods</option>
+                      <option>2024</option>
+                      <option>2023</option>
+                    </select>
+                    <button className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
+                      Export Report
+                    </button>
+                  </div>
+                </div>
+
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { period: 'January 2024', status: 'Completed', total: 1057500, employees: 156 },
+                    { period: 'December 2023', status: 'Completed', total: 1042000, employees: 154 },
+                    { period: 'November 2023', status: 'Completed', total: 1038000, employees: 153 },
+                    { period: 'October 2023', status: 'Completed', total: 1025000, employees: 152 }
+                  ].map((period, index) => (
+                    <div key={index} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-slate-800">{period.period}</h4>
+                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                          {period.status}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-600">Total Payroll:</span>
+                          <span className="font-medium text-black">${(period.total / 1000).toFixed(0)}k</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-600">Employees:</span>
+                          <span className="font-medium text-black">{period.employees}</span>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-200">
+                        <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                          View Details →
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'reports' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-bold text-slate-800">Payroll Reports</h3>
+                  <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                    Generate Custom Report
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[
+                    { title: 'Monthly Payroll Summary', description: 'Complete breakdown of monthly payroll including all components', icon: '📊' },
+                    { title: 'Tax Compliance Report', description: 'Detailed tax deductions and compliance status for all employees', icon: '📋' },
+                    { title: 'Employee Compensation Analysis', description: 'Salary trends and compensation analysis across departments', icon: '📈' },
+                    { title: 'Overtime Report', description: 'Overtime hours and payments for the selected period', icon: '⏰' },
+                    { title: 'Benefits Summary', description: 'Employee benefits and deductions breakdown', icon: '🎁' },
+                    { title: 'Payroll Audit Trail', description: 'Complete audit trail of all payroll processing activities', icon: '🔍' }
+                  ].map((report, index) => (
+                    <div key={index} className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                      <div className="flex items-center mb-4">
+                        <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
+                          <span className="text-2xl">{report.icon}</span>
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-slate-800">{report.title}</h4>
+                        </div>
+                      </div>
+                      <p className="text-slate-600 text-sm mb-4">{report.description}</p>
+                      <div className="flex space-x-2">
+                        <button className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
+                          Generate
+                        </button>
+                        <button className="border border-slate-300 text-slate-700 px-3 py-1 rounded text-sm hover:bg-slate-50">
+                          Preview
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {activeTab === 'settings' && (
               <div className="space-y-6">
@@ -1045,84 +1087,6 @@ NET PAY:       ${formatPeso(amounts.net || 0)}
               <button type="submit" disabled={adding} className="px-4 py-2 bg-orange-700 text-white rounded-md hover:bg-orange-800 disabled:opacity-50">{adding? 'Adding…' : 'Add Entry'}</button>
             </div>
           </form>
-        </div>
-      </div>, document.body)
-    }
-    {/* Payslip View Modal */}
-    {showPayslipModal && selectedPayslip && typeof window !== 'undefined' && createPortal(
-      <div className="fixed inset-0 z-[2000] flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/50" onClick={() => setShowPayslipModal(false)}></div>
-        <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-black">Payslip Details</h3>
-            <button onClick={() => setShowPayslipModal(false)} className="text-slate-600 hover:text-slate-900">✖</button>
-          </div>
-          {(() => {
-            const employee = employees.find(e => e.id === selectedPayslip.employee_id);
-            const amounts = selectedPayslip.amounts || {};
-            return (
-              <div className="space-y-4">
-                <div className="border-b pb-4">
-                  <div className="text-2xl font-bold text-center mb-4 text-black">PAYSLIP</div>
-                  <div className="space-y-2 text-sm text-black">
-                    <p><span className="font-medium">Generated:</span> {new Date().toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                    <p><span className="font-medium">Employee:</span> {employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}</p>
-                    <p><span className="font-medium">Position:</span> {employee?.job_title || 'N/A'}</p>
-                    <p><span className="font-medium">Employee ID:</span> {employee?.employee_id || 'N/A'}</p>
-                    <p><span className="font-medium">Issue Date:</span> {selectedPayslip.issue_date}</p>
-                    <p><span className="font-medium">Payslip ID:</span> {selectedPayslip.payslip_id}</p>
-                    {selectedPayslip.attendance && (
-                      <>
-                        <p><span className="font-medium">Days Worked:</span> {selectedPayslip.attendance.totalDays || 0}</p>
-                        <p><span className="font-medium">Total Hours:</span> {(selectedPayslip.attendance.totalHours || 0).toFixed(2)}h</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="font-bold text-slate-800 mb-2">EARNINGS:</h4>
-                    <div className="space-y-1 ml-4 text-black">
-                      <div className="flex justify-between">
-                        <span>Basic Pay:</span>
-                        <span className="font-medium">{formatPeso(amounts.basic || 0)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Overtime:</span>
-                        <span className="font-medium">{formatPeso(amounts.overtime || 0)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Bonus:</span>
-                        <span className="font-medium">{formatPeso(amounts.bonus || 0)}</span>
-                      </div>
-                      <div className="flex justify-between border-t pt-1">
-                        <span className="font-medium">Total Earnings:</span>
-                        <span className="font-bold">{formatPeso((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0))}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-800 mb-2">DEDUCTIONS:</h4>
-                    <div className="ml-4 text-black">
-                      <div className="flex justify-between">
-                        <span>Deductions:</span>
-                        <span className="font-medium text-red-600">-{formatPeso(amounts.deductions || 0)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="border-t-2 pt-4">
-                    <div className="flex justify-between items-center text-black">
-                      <span className="text-lg font-bold">NET PAY:</span>
-                      <span className="text-2xl font-bold text-green-600">{formatPeso(amounts.net || 0)}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3 pt-4">
-                  <button onClick={() => setShowPayslipModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">Close</button>
-                </div>
-              </div>
-            );
-          })()}
         </div>
       </div>, document.body)
     }
