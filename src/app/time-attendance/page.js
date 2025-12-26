@@ -2,6 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { SidebarInset } from '@humanresource/components/ui/sidebar';
+
+// Leave limitations per type
+const leaveLimitations = {
+  'Vacation': 6,
+  'Sick Leave': 4,
+  'Personal Leave': 2,
+  'Emergency Leave': 2
+};
 
 export default function TimeAttendance() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -300,14 +309,6 @@ export default function TimeAttendance() {
     return { totalEmployees: total, present, absent, late: 0, onLeave, averageHours: avgHours };
   }, [employees, attendanceToday, recentLeaves]);
 
-  // Leave limitations per type
-  const leaveLimitations = {
-    'Vacation': 6,
-    'Sick Leave': 4,
-    'Personal Leave': 2,
-    'Emergency Leave': 2
-  };
-
   const leaveRequests = useMemo(() => {
     const empById = new Map((employees || []).map(e => [e.id, e]));
     const empByEmployeeId = new Map((employees || []).map(e => [e.employee_id, e]));
@@ -373,7 +374,7 @@ export default function TimeAttendance() {
   }, [leaveRequests, currentPage.leave]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-orange-50">
+    <SidebarInset className="min-h-screen bg-gradient-to-br from-green-50 to-orange-50">
       {/* Navigation Header */}
       <nav className="bg-white shadow-lg border-b border-green-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -525,7 +526,7 @@ export default function TimeAttendance() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xl font-bold text-black">Today's Attendance</h3>
+                      <h3 className="text-xl font-bold text-black">Today&apos;s Attendance</h3>
                       <span className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
                         {attendanceRows.length} {attendanceRows.length === 1 ? 'Employee' : 'Employees'}
                       </span>
@@ -948,15 +949,15 @@ export default function TimeAttendance() {
                             .reduce((sum, l) => sum + (l.days || 0), 0);
                           const remaining = Math.max(0, leave.total - usedDays);
                           return (
-                          <div key={index} className="space-y-2">
+                          <div key={index} className="space-y-2 pb-3 border-b border-green-100 last:border-b-0 last:pb-0">
                             <div className="flex justify-between items-center">
                               <span className="font-medium text-green-900">{leave.type}</span>
-                              <span className="text-sm text-green-800">{leave.used}/{leave.total} days</span>
+                              <span className="text-sm text-green-800">{usedDays}/{leave.total} days</span>
                             </div>
-                            <div className="w-full bg-green-200 rounded-full h-2">
+                            <div className="w-full bg-green-200 rounded-full h-2 overflow-hidden">
                               <div 
-                                className="bg-green-600 h-2 rounded-full" 
-                                style={{ width: `${(usedDays / leave.total) * 100}%` }}
+                                className="bg-green-600 h-2 rounded-full transition-all" 
+                                style={{ width: `${Math.min(100, (usedDays / leave.total) * 100)}%` }}
                               ></div>
                             </div>
                             <div className="flex justify-between text-sm">
@@ -1154,6 +1155,6 @@ export default function TimeAttendance() {
           </div>
         </div>
       )}
-    </div>
+    </SidebarInset>
   );
 }

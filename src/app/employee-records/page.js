@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import jsPDF from 'jspdf';
 import Link from 'next/link';
+import { SidebarInset } from '@humanresource/components/ui/sidebar';
 
 export default function EmployeeRecords() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -217,6 +218,7 @@ export default function EmployeeRecords() {
   useEffect(() => { 
     fetchEmployees(); 
     fetchDepartments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (selectedEmployee) {
@@ -237,7 +239,7 @@ export default function EmployeeRecords() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <SidebarInset className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Navigation Header */}
       <nav className="bg-white shadow-lg border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -807,6 +809,6 @@ export default function EmployeeRecords() {
           </div>
         </div>
       )}
-    </div>
+    </SidebarInset>
   );
 }

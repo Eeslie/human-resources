@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { SidebarInset } from '@humanresource/components/ui/sidebar';
 
 export default function Recruitment() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -553,7 +554,7 @@ export default function Recruitment() {
   };
 
   return (<>
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <SidebarInset className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Navigation Header */}
       <nav className="bg-white shadow-lg border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -695,13 +696,13 @@ export default function Recruitment() {
           {/* Tab Content */}
           <div className="p-6">
             {activeTab === 'overview' && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
-                    <h3 className="text-xl font-bold text-slate-800 mb-4">Recent Job Postings</h3>
-                    <div className="space-y-4">
+                    <h3 className="text-xl font-bold text-slate-800 mb-3">Recent Job Postings</h3>
+                    <div className="space-y-3">
                       {(jobs.length ? jobs : jobPostings).slice(0, 3).map((job) => (
-                        <div key={job.id} className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div key={job.id} className="border border-slate-200 rounded-lg p-3 hover:shadow-md transition-shadow">
                           <div className="flex justify-between items-start mb-2">
                             <h4 className="font-semibold text-slate-800">{job.job_title || job.title}</h4>
                             <span className={`px-2 py-1 text-xs rounded-full ${
@@ -724,9 +725,9 @@ export default function Recruitment() {
                   </div>
 
                   <div>
-                    <h3 className="text-xl font-bold text-slate-800 mb-4">Recruitment Pipeline</h3>
-                    <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-6 border border-slate-200">
-                      <div className="space-y-4">
+                    <h3 className="text-xl font-bold text-slate-800 mb-3">Recruitment Pipeline</h3>
+                    <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-4 border border-slate-200">
+                      <div className="space-y-3">
                         <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
                           <div className="flex items-center space-x-3">
                             <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
@@ -1024,10 +1025,10 @@ export default function Recruitment() {
                         </button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
-                    <h4 className="font-semibold text-slate-800 mb-4">Today's Interviews</h4>
-                    <div className="space-y-4">
+                    <h4 className="font-semibold text-slate-800 mb-3">Today&apos;s Interviews</h4>
+                    <div className="space-y-3">
                       {(() => {
                         const today = new Date().toISOString().slice(0, 10);
                         const todayInterviews = (interviews.length ? interviews : []).filter(i => {
@@ -1206,7 +1207,7 @@ export default function Recruitment() {
           </div>
         </div>
       </div>
-    </div>
+    </SidebarInset>
 
     {/* Modals */}
     <JobCreateModal 

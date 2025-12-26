@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import jsPDF from 'jspdf';
+import { SidebarInset } from '@humanresource/components/ui/sidebar';
 
 export default function Payroll() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -25,6 +27,9 @@ export default function Payroll() {
   const [adding, setAdding] = useState(false);
   const [overviewPage, setOverviewPage] = useState(1);
   const [payslipsPage, setPayslipsPage] = useState(1);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [showPayslipModal, setShowPayslipModal] = useState(false);
+  const [selectedPayslip, setSelectedPayslip] = useState(null);
   const pageSize = 6;
   const modalCheckId = useRef(0);
 
@@ -62,9 +67,7 @@ export default function Payroll() {
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'process', label: 'Process Payroll', icon: '⚡' },
     { id: 'payslips', label: 'Payslips', icon: '📄' },
-    { id: 'history', label: 'Payroll History', icon: '📈' },
-    { id: 'reports', label: 'Reports', icon: '📋' },
-    { id: 'settings', label: 'Settings', icon: '⚙️' }
+    { id: 'history', label: 'Payroll History', icon: '📈' }
   ];
 
   // Calculation: derive table rows from payrolls and ensure every employee shows up
@@ -211,7 +214,7 @@ export default function Payroll() {
     if (showAddModal && !addForm.employee_id && employees.length) {
       setAddForm((f) => ({ ...f, employee_id: employees[0].id }));
     }
-  }, [employees, showAddModal]);
+  }, [employees, showAddModal, addForm.employee_id]);
 
   async function submitAddPayroll(e) {
     e?.preventDefault?.();
@@ -345,6 +348,71 @@ export default function Payroll() {
     }
   }
 
+  function exportPayrollToPDF() {
+    const pdf = new jsPDF();
+    const pageWidth = pdf.internal.pageSize.width;
+    const pageHeight = pdf.internal.pageSize.height;
+    let yPos = 20;
+
+    // Add header
+    pdf.setFontSize(18);
+    pdf.text('Payroll Report', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 10;
+    pdf.setFontSize(12);
+    const now = new Date();
+    pdf.text(`Generated: ${now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, pageWidth / 2, yPos, { align: 'center' });
+    yPos += 15;
+
+    // Table headers
+    pdf.setFontSize(10);
+    pdf.setFont(undefined, 'bold');
+    pdf.text('Employee', 14, yPos);
+    pdf.text('Basic Salary', 60, yPos);
+    pdf.text('Overtime', 100, yPos);
+    pdf.text('Bonuses', 130, yPos);
+    pdf.text('Deductions', 160, yPos);
+    pdf.text('Net Pay', 190, yPos);
+    yPos += 8;
+    pdf.setFontSize(9);
+    pdf.setFont(undefined, 'normal');
+
+    // Table rows
+    payrollRows.forEach((row) => {
+      if (yPos > pageHeight - 20) {
+        pdf.addPage();
+        yPos = 20;
+      }
+      pdf.text(row.employee || 'Unknown', 14, yPos, { maxWidth: 45 });
+      pdf.text(formatPeso(row.basicSalary), 60, yPos);
+      pdf.text(formatPeso(row.overtime), 100, yPos);
+      pdf.text(formatPeso(row.bonuses), 130, yPos);
+      pdf.text(formatPeso(row.deductions), 160, yPos);
+      pdf.text(formatPeso(row.netPay), 190, yPos);
+      yPos += 8;
+    });
+
+    // Add totals
+    if (yPos > pageHeight - 30) {
+      pdf.addPage();
+      yPos = 20;
+    }
+    yPos += 5;
+    pdf.setFont(undefined, 'bold');
+    const totalBasic = payrollRows.reduce((sum, r) => sum + r.basicSalary, 0);
+    const totalOvertime = payrollRows.reduce((sum, r) => sum + r.overtime, 0);
+    const totalBonuses = payrollRows.reduce((sum, r) => sum + r.bonuses, 0);
+    const totalDeductions = payrollRows.reduce((sum, r) => sum + r.deductions, 0);
+    const totalNet = payrollRows.reduce((sum, r) => sum + r.netPay, 0);
+    pdf.text('TOTALS:', 14, yPos);
+    pdf.text(formatPeso(totalBasic), 60, yPos);
+    pdf.text(formatPeso(totalOvertime), 100, yPos);
+    pdf.text(formatPeso(totalBonuses), 130, yPos);
+    pdf.text(formatPeso(totalDeductions), 160, yPos);
+    pdf.text(formatPeso(totalNet), 190, yPos);
+
+    pdf.save('payroll-report.pdf');
+  }
+
   const payrollStats = useMemo(() => {
     const totalEmployees = employees.length;
     const totalPayroll = payrollRows.reduce((sum, r) => sum + r.netPay, 0);
@@ -354,9 +422,39 @@ export default function Payroll() {
     return { totalEmployees, totalPayroll, averageSalary, processedThisMonth, pendingApproval };
   }, [employees, payrollRows]);
 
+  // Group payrolls by month for history
+  const historyMonths = useMemo(() => {
+    const months = ['November 2025', 'December 2025', 'January 2026'];
+    return months.map(month => {
+      const [monthName, year] = month.split(' ');
+      const monthNum = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(monthName);
+      const startDate = `${year}-${String(monthNum + 1).padStart(2, '0')}-01`;
+      const endDate = new Date(parseInt(year), monthNum + 1, 0).toISOString().slice(0, 10);
+      
+      const monthPayrolls = payrolls.filter(p => {
+        const payDate = p.payroll_date || p.created_at?.slice(0, 10) || '';
+        return payDate >= startDate && payDate <= endDate;
+      });
+      
+      const total = monthPayrolls.reduce((sum, p) => {
+        const emp = employees.find(e => e.id === p.employee_id);
+        const basic = Number(p.salary_base || 0) || getEmployeeSalary(emp?.job_title);
+        return sum + basic + Number(p.bonus || 0) + Number(p.overtime || 0) - Number(p.deductions || 0);
+      }, 0);
+      
+      return {
+        period: month,
+        status: monthPayrolls.length > 0 ? 'Completed' : 'No Data',
+        total,
+        employees: new Set(monthPayrolls.map(p => p.employee_id)).size,
+        payrolls: monthPayrolls
+      };
+    });
+  }, [payrolls, employees]);
+
   return (
     <>
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <SidebarInset className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Navigation Header */}
       <nav className="bg-white shadow-lg border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -403,64 +501,64 @@ export default function Payroll() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 -mt-4">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-white rounded-xl shadow-lg p-6 relative z-10">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Total Employees</p>
-                <p className="text-2xl font-bold text-slate-800">{payrollStats.totalEmployees}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-600 mb-1">Total Employees</p>
+                <p className="text-2xl font-bold text-slate-800 truncate">{payrollStats.totalEmployees}</p>
               </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 ml-3">
                 <span className="text-2xl">👥</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-white rounded-xl shadow-lg p-6 relative z-10">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Monthly Payroll</p>
-                <p className="text-2xl font-bold text-slate-800">{formatPeso(payrollStats.totalPayroll)}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-600 mb-1">Monthly Payroll</p>
+                <p className="text-2xl font-bold text-slate-800 truncate">{formatPeso(payrollStats.totalPayroll)}</p>
               </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 ml-3">
                 <span className="text-2xl">💰</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-white rounded-xl shadow-lg p-6 relative z-10">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Avg Salary</p>
-                <p className="text-2xl font-bold text-slate-800">{formatPeso(payrollStats.averageSalary)}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-600 mb-1">Avg Salary</p>
+                <p className="text-2xl font-bold text-slate-800 truncate">{formatPeso(payrollStats.averageSalary)}</p>
               </div>
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 ml-3">
                 <span className="text-2xl">📊</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-white rounded-xl shadow-lg p-6 relative z-10">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Processed</p>
-                <p className="text-2xl font-bold text-green-600">{payrollStats.processedThisMonth}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-600 mb-1">Processed</p>
+                <p className="text-2xl font-bold text-green-600 truncate">{payrollStats.processedThisMonth}</p>
               </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 ml-3">
                 <span className="text-2xl">✅</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-white rounded-xl shadow-lg p-6 relative z-10">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Pending</p>
-                <p className="text-2xl font-bold text-orange-600">{payrollStats.pendingApproval}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-600 mb-1">Pending</p>
+                <p className="text-2xl font-bold text-orange-600 truncate">{payrollStats.pendingApproval}</p>
               </div>
-              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0 ml-3">
                 <span className="text-2xl">⏳</span>
               </div>
             </div>
@@ -492,17 +590,14 @@ export default function Payroll() {
           {/* Tab Content */}
           <div className="p-6">
             {activeTab === 'overview' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center relative z-10">
-                  <h3 className="text-xl font-bold text-slate-800">Current Payroll Period:</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-bold text-slate-800">Current Payroll Period</h3>
                   <div className="flex space-x-3">
                     <button type="button" onClick={() => addPayrollLine()} className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 pointer-events-auto">
                       + Add Entry
                     </button>
-                    <button onClick={processPayrollRun} disabled={processing} className={`px-4 py-2 rounded-lg text-white ${processing ? 'bg-orange-400' : 'bg-orange-600 hover:bg-orange-700'}`}>
-                      {processing ? 'Processing…' : 'Process Payroll'}
-                    </button>
-                    <button className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">
+                    <button onClick={exportPayrollToPDF} className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">
                       Export Data
                     </button>
                   </div>
@@ -561,7 +656,7 @@ export default function Payroll() {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <button onClick={() => setSelectedPayroll(employee)} className="text-blue-600 hover:text-blue-900 mr-3">View</button>
+                            <button onClick={() => { setSelectedPayroll(employee); setShowViewModal(true); }} className="text-blue-600 hover:text-blue-900 mr-3">View</button>
                             <button onClick={() => generatePayslipFor(employee)} className="text-green-600 hover:text-green-900">Generate Payslip</button>
                           </td>
                         </tr>
@@ -660,7 +755,76 @@ export default function Payroll() {
                     <button onClick={() => fetchPayslips()} className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">
                       Refresh
                     </button>
-                    <button className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
+                    <button onClick={() => {
+                      const pdf = new jsPDF();
+                      const pageWidth = pdf.internal.pageSize.width;
+                      const pageHeight = pdf.internal.pageSize.height;
+                      let yPos = 20;
+                      
+                      payslips.forEach((payslip, index) => {
+                        if (index > 0) pdf.addPage();
+                        yPos = 20;
+                        const employee = employees.find(e => e.id === payslip.employee_id);
+                        const amounts = payslip.amounts || {};
+                        
+                        pdf.setFontSize(16);
+                        pdf.setFont(undefined, 'bold');
+                        pdf.text('PAYSLIP', pageWidth / 2, yPos, { align: 'center' });
+                        yPos += 10;
+                        
+                        pdf.setFontSize(10);
+                        pdf.setFont(undefined, 'normal');
+                        const now = new Date();
+                        pdf.text(`Generated: ${now.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 14, yPos);
+                        yPos += 5;
+                        pdf.text(`Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}`, 14, yPos);
+                        yPos += 5;
+                        pdf.text(`Position: ${employee?.job_title || 'N/A'}`, 14, yPos);
+                        yPos += 5;
+                        pdf.text(`Employee ID: ${employee?.employee_id || 'N/A'}`, 14, yPos);
+                        yPos += 5;
+                        pdf.text(`Issue Date: ${payslip.issue_date}`, 14, yPos);
+                        yPos += 5;
+                        pdf.text(`Payslip ID: ${payslip.payslip_id}`, 14, yPos);
+                        if (payslip.attendance) {
+                          yPos += 5;
+                          pdf.text(`Days Worked: ${payslip.attendance.totalDays || 0}`, 14, yPos);
+                          yPos += 5;
+                          pdf.text(`Total Hours: ${(payslip.attendance.totalHours || 0).toFixed(2)}h`, 14, yPos);
+                        }
+                        yPos += 10;
+
+                        pdf.setFontSize(12);
+                        pdf.setFont(undefined, 'bold');
+                        pdf.text('EARNINGS:', 14, yPos);
+                        yPos += 8;
+                        pdf.setFontSize(10);
+                        pdf.setFont(undefined, 'normal');
+                        pdf.text(`Basic Pay: ${formatPeso(amounts.basic || 0)}`, 20, yPos);
+                        yPos += 5;
+                        pdf.text(`Overtime: ${formatPeso(amounts.overtime || 0)}`, 20, yPos);
+                        yPos += 5;
+                        pdf.text(`Bonus: ${formatPeso(amounts.bonus || 0)}`, 20, yPos);
+                        yPos += 5;
+                        pdf.text(`Total Earnings: ${formatPeso((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0))}`, 20, yPos);
+                        yPos += 10;
+
+                        pdf.setFontSize(12);
+                        pdf.setFont(undefined, 'bold');
+                        pdf.text('DEDUCTIONS:', 14, yPos);
+                        yPos += 8;
+                        pdf.setFontSize(10);
+                        pdf.setFont(undefined, 'normal');
+                        pdf.text(`Deductions: -${formatPeso(amounts.deductions || 0)}`, 20, yPos);
+                        yPos += 10;
+
+                        pdf.setFontSize(14);
+                        pdf.setFont(undefined, 'bold');
+                        pdf.text(`NET PAY: ${formatPeso(amounts.net || 0)}`, pageWidth / 2, yPos, { align: 'center' });
+                      });
+                      
+                      pdf.save('all-payslips.pdf');
+                    }} className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
                       Export All
                     </button>
                   </div>
@@ -724,81 +888,79 @@ export default function Payroll() {
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                               <button 
                                 onClick={() => {
-                                  // Create a simple text-based payslip download with real-time date and attendance
-                                  const now = new Date();
-                                  const currentDateTime = now.toLocaleString('en-US', { 
-                                    year: 'numeric', 
-                                    month: 'long', 
-                                    day: 'numeric', 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                  });
-                                  const attendanceInfo = payslip.attendance 
-                                    ? `\nATTENDANCE:\n----------\nTotal Days Worked: ${payslip.attendance.totalDays || 0}\nTotal Hours: ${(payslip.attendance.totalHours || 0).toFixed(2)}h\n`
-                                    : '';
-                                  const payslipText = `
-PAYSLIP
-========
-Generated: ${currentDateTime}
-Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}
-Employee ID: ${employee?.employee_id || 'N/A'}
-Position: ${employee?.job_title || 'N/A'}
-Issue Date: ${payslip.issue_date}
-Payslip ID: ${payslip.payslip_id}
-${attendanceInfo}
-EARNINGS:
----------
-Basic Pay:     ${formatPeso(amounts.basic || 0)}
-Overtime:      ${formatPeso(amounts.overtime || 0)}
-Bonus:         ${formatPeso(amounts.bonus || 0)}
-Total Earnings: ${formatPeso((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0))}
-
-DEDUCTIONS:
------------
-Deductions:    -${formatPeso(amounts.deductions || 0)}
-
-NET PAY:       ${formatPeso(amounts.net || 0)}
-                                  `;
-                                  const blob = new Blob([payslipText], { type: 'text/plain' });
-                                  const url = URL.createObjectURL(blob);
-                                  const a = document.createElement('a');
-                                  a.href = url;
-                                  a.download = `payslip-${payslip.payslip_id}.txt`;
-                                  a.click();
-                                  URL.revokeObjectURL(url);
+                                  setSelectedPayslip(payslip);
+                                  setShowPayslipModal(true);
                                 }}
                                 className="text-blue-600 hover:text-blue-900 mr-3"
                               >
-                                Download
+                                View
                               </button>
                               <button 
                                 onClick={() => {
-                                  const payslipText = `
-PAYSLIP
-========
-Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}
-Employee ID: ${employee?.employee_id || 'N/A'}
-Issue Date: ${payslip.issue_date}
-Payslip ID: ${payslip.payslip_id}
+                                  const pdf = new jsPDF();
+                                  const pageWidth = pdf.internal.pageSize.width;
+                                  let yPos = 20;
+                                  
+                                  pdf.setFontSize(16);
+                                  pdf.setFont(undefined, 'bold');
+                                  pdf.text('PAYSLIP', pageWidth / 2, yPos, { align: 'center' });
+                                  yPos += 10;
+                                  
+                                  pdf.setFontSize(10);
+                                  pdf.setFont(undefined, 'normal');
+                                  const now = new Date();
+                                  pdf.text(`Generated: ${now.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 14, yPos);
+                                  yPos += 5;
+                                  pdf.text(`Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}`, 14, yPos);
+                                  yPos += 5;
+                                  pdf.text(`Position: ${employee?.job_title || 'N/A'}`, 14, yPos);
+                                  yPos += 5;
+                                  pdf.text(`Employee ID: ${employee?.employee_id || 'N/A'}`, 14, yPos);
+                                  yPos += 5;
+                                  pdf.text(`Issue Date: ${payslip.issue_date}`, 14, yPos);
+                                  yPos += 5;
+                                  pdf.text(`Payslip ID: ${payslip.payslip_id}`, 14, yPos);
+                                  if (payslip.attendance) {
+                                    yPos += 5;
+                                    pdf.text(`Days Worked: ${payslip.attendance.totalDays || 0}`, 14, yPos);
+                                    yPos += 5;
+                                    pdf.text(`Total Hours: ${(payslip.attendance.totalHours || 0).toFixed(2)}h`, 14, yPos);
+                                  }
+                                  yPos += 10;
 
-EARNINGS:
----------
-Basic Pay:     $${(amounts.basic || 0).toLocaleString()}
-Overtime:      $${(amounts.overtime || 0).toLocaleString()}
-Bonus:         $${(amounts.bonus || 0).toLocaleString()}
-Total Earnings: $${((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0)).toLocaleString()}
+                                  pdf.setFontSize(12);
+                                  pdf.setFont(undefined, 'bold');
+                                  pdf.text('EARNINGS:', 14, yPos);
+                                  yPos += 8;
+                                  pdf.setFontSize(10);
+                                  pdf.setFont(undefined, 'normal');
+                                  pdf.text(`Basic Pay: ${formatPeso(amounts.basic || 0)}`, 20, yPos);
+                                  yPos += 5;
+                                  pdf.text(`Overtime: ${formatPeso(amounts.overtime || 0)}`, 20, yPos);
+                                  yPos += 5;
+                                  pdf.text(`Bonus: ${formatPeso(amounts.bonus || 0)}`, 20, yPos);
+                                  yPos += 5;
+                                  pdf.text(`Total Earnings: ${formatPeso((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0))}`, 20, yPos);
+                                  yPos += 10;
 
-DEDUCTIONS:
------------
-Deductions:    -$${(amounts.deductions || 0).toLocaleString()}
+                                  pdf.setFontSize(12);
+                                  pdf.setFont(undefined, 'bold');
+                                  pdf.text('DEDUCTIONS:', 14, yPos);
+                                  yPos += 8;
+                                  pdf.setFontSize(10);
+                                  pdf.setFont(undefined, 'normal');
+                                  pdf.text(`Deductions: -${formatPeso(amounts.deductions || 0)}`, 20, yPos);
+                                  yPos += 10;
 
-NET PAY:       $${(amounts.net || 0).toLocaleString()}
-                                  `;
-                                  alert(payslipText);
+                                  pdf.setFontSize(14);
+                                  pdf.setFont(undefined, 'bold');
+                                  pdf.text(`NET PAY: ${formatPeso(amounts.net || 0)}`, pageWidth / 2, yPos, { align: 'center' });
+                                  
+                                  pdf.save(`payslip-${payslip.payslip_id}.pdf`);
                                 }}
                                 className="text-green-600 hover:text-green-900"
                               >
-                                View
+                                Download PDF
                               </button>
                             </td>
                           </tr>
@@ -831,197 +993,41 @@ NET PAY:       $${(amounts.net || 0).toLocaleString()}
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h3 className="text-xl font-bold text-slate-800">Payroll History</h3>
-                  <div className="flex space-x-3">
-                    <select className="border border-slate-300 rounded-lg px-3 py-2 text-black">
-                      <option>All Periods</option>
-                      <option>2024</option>
-                      <option>2023</option>
-                    </select>
-                    <button className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
-                      Export Report
-                    </button>
-                  </div>
                 </div>
 
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    { period: 'January 2024', status: 'Completed', total: 1057500, employees: 156 },
-                    { period: 'December 2023', status: 'Completed', total: 1042000, employees: 154 },
-                    { period: 'November 2023', status: 'Completed', total: 1038000, employees: 153 },
-                    { period: 'October 2023', status: 'Completed', total: 1025000, employees: 152 }
-                  ].map((period, index) => (
-                    <div key={index} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-semibold text-slate-800">{period.period}</h4>
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                          {period.status}
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-600">Total Payroll:</span>
-                          <span className="font-medium text-black">${(period.total / 1000).toFixed(0)}k</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {historyMonths.map((period, index) => (
+                      <div key={index} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-semibold text-slate-800">{period.period}</h4>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            period.status === 'Completed' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {period.status}
+                          </span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-600">Employees:</span>
-                          <span className="font-medium text-black">{period.employees}</span>
-                        </div>
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-slate-200">
-                        <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                          View Details →
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'reports' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-slate-800">Payroll Reports</h3>
-                  <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
-                    Generate Custom Report
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {[
-                    { title: 'Monthly Payroll Summary', description: 'Complete breakdown of monthly payroll including all components', icon: '📊' },
-                    { title: 'Tax Compliance Report', description: 'Detailed tax deductions and compliance status for all employees', icon: '📋' },
-                    { title: 'Employee Compensation Analysis', description: 'Salary trends and compensation analysis across departments', icon: '📈' },
-                    { title: 'Overtime Report', description: 'Overtime hours and payments for the selected period', icon: '⏰' },
-                    { title: 'Benefits Summary', description: 'Employee benefits and deductions breakdown', icon: '🎁' },
-                    { title: 'Payroll Audit Trail', description: 'Complete audit trail of all payroll processing activities', icon: '🔍' }
-                  ].map((report, index) => (
-                    <div key={index} className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-                      <div className="flex items-center mb-4">
-                        <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                          <span className="text-2xl">{report.icon}</span>
-                        </div>
-                        <div>
-                          <h4 className="font-semibold text-slate-800">{report.title}</h4>
-                        </div>
-                      </div>
-                      <p className="text-slate-600 text-sm mb-4">{report.description}</p>
-                      <div className="flex space-x-2">
-                        <button className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
-                          Generate
-                        </button>
-                        <button className="border border-slate-300 text-slate-700 px-3 py-1 rounded text-sm hover:bg-slate-50">
-                          Preview
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'settings' && (
-              <div className="space-y-6">
-                <h3 className="text-xl font-bold text-slate-800">Payroll Settings</h3>
-                
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div className="space-y-6">
-                    <div className="bg-white border border-slate-200 rounded-lg p-6">
-                      <h4 className="font-semibold text-slate-800 mb-4">Payroll Schedule</h4>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Pay Frequency</label>
-                          <select className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black">
-                            <option>Monthly</option>
-                            <option>Bi-weekly</option>
-                            <option>Weekly</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Pay Day</label>
-                          <select className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black">
-                            <option>Last day of month</option>
-                            <option>15th of month</option>
-                            <option>1st of month</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white border border-slate-200 rounded-lg p-6">
-                      <h4 className="font-semibold text-slate-800 mb-4">Tax Settings</h4>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Federal Tax Rate (%)</label>
-                          <input type="number" defaultValue="22" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">State Tax Rate (%)</label>
-                          <input type="number" defaultValue="5" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Social Security Rate (%)</label>
-                          <input type="number" defaultValue="6.2" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="bg-white border border-slate-200 rounded-lg p-6">
-                      <h4 className="font-semibold text-slate-800 mb-4">Deduction Categories</h4>
-                      <div className="space-y-3">
-                        {[
-                          'Health Insurance',
-                          'Dental Insurance',
-                          '401(k) Contribution',
-                          'Life Insurance',
-                          'Parking',
-                          'Meal Plans'
-                        ].map((deduction, index) => (
-                          <div key={index} className="flex items-center justify-between">
-                            <span className="text-sm text-slate-700">{deduction}</span>
-                            <button className="text-blue-600 hover:text-blue-800 text-sm">Edit</button>
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-slate-600">Total Payroll:</span>
+                            <span className="font-medium text-black">{formatPeso(period.total)}</span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="bg-white border border-slate-200 rounded-lg p-6">
-                      <h4 className="font-semibold text-slate-800 mb-4">Bank Integration</h4>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Bank Name</label>
-                          <input type="text" defaultValue="Chase Bank" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700">Account Number</label>
-                          <input type="password" defaultValue="****1234" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm text-black" />
-                        </div>
-                        <div className="flex items-center">
-                          <input type="checkbox" className="rounded border-slate-300 text-black" />
-                          <label className="ml-2 text-sm text-slate-700">Enable automatic transfers</label>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-slate-600">Employees:</span>
+                            <span className="font-medium text-black">{period.employees}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
-
-                <div className="flex justify-end space-x-3">
-                  <button className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">
-                    Cancel
-                  </button>
-                  <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
-                    Save Settings
-                  </button>
-                </div>
-              </div>
             )}
+
           </div>
         </div>
       </div>
-    </div>
+    </SidebarInset>
     {/* Add Payroll Entry Modal via Portal - moved outside tab content to ensure visibility */}
     {showAddModal && typeof window !== 'undefined' && createPortal(
       <div className="fixed inset-0 z-[2000] flex items-center justify-center" data-payroll-add-modal>
@@ -1087,6 +1093,224 @@ NET PAY:       $${(amounts.net || 0).toLocaleString()}
               <button type="submit" disabled={adding} className="px-4 py-2 bg-orange-700 text-white rounded-md hover:bg-orange-800 disabled:opacity-50">{adding? 'Adding…' : 'Add Entry'}</button>
             </div>
           </form>
+        </div>
+      </div>, document.body)
+    }
+    {/* View Payroll Modal */}
+    {showViewModal && selectedPayroll && typeof window !== 'undefined' && createPortal(
+      <div className="fixed inset-0 z-[2000] flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/50" onClick={() => setShowViewModal(false)}></div>
+        <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-black">Payroll Details</h3>
+            <button onClick={() => setShowViewModal(false)} className="text-slate-600 hover:text-slate-900">✖</button>
+          </div>
+          {(() => {
+            const employee = employees.find(e => e.id === selectedPayroll.employee_id);
+            return (
+              <div className="space-y-4">
+                <div className="border-b pb-4">
+                  <div className="space-y-2 text-sm text-black">
+                    <p><span className="font-medium">Employee:</span> {selectedPayroll.employee || 'Unknown'}</p>
+                    <p><span className="font-medium">Position:</span> {selectedPayroll.position || 'N/A'}</p>
+                    <p><span className="font-medium">Employee ID:</span> {employee?.employee_id || 'N/A'}</p>
+                    <p><span className="font-medium">Pay Period:</span> {selectedPayroll.payPeriod || 'N/A'}</p>
+                    <p><span className="font-medium">Status:</span> {selectedPayroll.status}</p>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-slate-800 mb-2">EARNINGS:</h4>
+                    <div className="space-y-1 ml-4 text-black">
+                      <div className="flex justify-between">
+                        <span>Basic Salary:</span>
+                        <span className="font-medium">{formatPeso(selectedPayroll.basicSalary)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Overtime:</span>
+                        <span className="font-medium">{formatPeso(selectedPayroll.overtime)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Bonuses:</span>
+                        <span className="font-medium">{formatPeso(selectedPayroll.bonuses)}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-1">
+                        <span className="font-medium">Total Earnings:</span>
+                        <span className="font-bold">{formatPeso(selectedPayroll.basicSalary + selectedPayroll.overtime + selectedPayroll.bonuses)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 mb-2">DEDUCTIONS:</h4>
+                    <div className="ml-4 text-black">
+                      <div className="flex justify-between">
+                        <span>Deductions:</span>
+                        <span className="font-medium text-red-600">-{formatPeso(selectedPayroll.deductions)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="border-t-2 pt-4">
+                    <div className="flex justify-between items-center text-black">
+                      <span className="text-lg font-bold">NET PAY:</span>
+                      <span className="text-2xl font-bold text-green-600">{formatPeso(selectedPayroll.netPay)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <button onClick={() => {
+                    generatePayslipFor(selectedPayroll);
+                    setShowViewModal(false);
+                  }} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                    Generate Payslip PDF
+                  </button>
+                  <button onClick={() => setShowViewModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">Close</button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>, document.body)
+    }
+    {/* View Payslip Modal */}
+    {showPayslipModal && selectedPayslip && typeof window !== 'undefined' && createPortal(
+      <div className="fixed inset-0 z-[2000] flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/50" onClick={() => setShowPayslipModal(false)}></div>
+        <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-black">Payslip Details</h3>
+            <button onClick={() => setShowPayslipModal(false)} className="text-slate-600 hover:text-slate-900">✖</button>
+          </div>
+          {(() => {
+            const employee = employees.find(e => e.id === selectedPayslip.employee_id);
+            const amounts = selectedPayslip.amounts || {};
+            return (
+              <div className="space-y-4">
+                <div className="border-b pb-4">
+                  <div className="text-2xl font-bold text-center mb-4 text-black">PAYSLIP</div>
+                  <div className="space-y-2 text-sm text-black">
+                    <p><span className="font-medium">Generated:</span> {new Date().toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                    <p><span className="font-medium">Employee:</span> {employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}</p>
+                    <p><span className="font-medium">Position:</span> {employee?.job_title || 'N/A'}</p>
+                    <p><span className="font-medium">Employee ID:</span> {employee?.employee_id || 'N/A'}</p>
+                    <p><span className="font-medium">Issue Date:</span> {selectedPayslip.issue_date}</p>
+                    <p><span className="font-medium">Payslip ID:</span> {selectedPayslip.payslip_id}</p>
+                    {selectedPayslip.attendance && (
+                      <>
+                        <p><span className="font-medium">Days Worked:</span> {selectedPayslip.attendance.totalDays || 0}</p>
+                        <p><span className="font-medium">Total Hours:</span> {(selectedPayslip.attendance.totalHours || 0).toFixed(2)}h</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-slate-800 mb-2">EARNINGS:</h4>
+                    <div className="space-y-1 ml-4 text-black">
+                      <div className="flex justify-between">
+                        <span>Basic Pay:</span>
+                        <span className="font-medium">{formatPeso(amounts.basic || 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Overtime:</span>
+                        <span className="font-medium">{formatPeso(amounts.overtime || 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Bonus:</span>
+                        <span className="font-medium">{formatPeso(amounts.bonus || 0)}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-1">
+                        <span className="font-medium">Total Earnings:</span>
+                        <span className="font-bold">{formatPeso((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0))}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 mb-2">DEDUCTIONS:</h4>
+                    <div className="ml-4 text-black">
+                      <div className="flex justify-between">
+                        <span>Deductions:</span>
+                        <span className="font-medium text-red-600">-{formatPeso(amounts.deductions || 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="border-t-2 pt-4">
+                    <div className="flex justify-between items-center text-black">
+                      <span className="text-lg font-bold">NET PAY:</span>
+                      <span className="text-2xl font-bold text-green-600">{formatPeso(amounts.net || 0)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <button onClick={() => {
+                    const pdf = new jsPDF();
+                    const pageWidth = pdf.internal.pageSize.width;
+                    let yPos = 20;
+                    
+                    pdf.setFontSize(16);
+                    pdf.setFont(undefined, 'bold');
+                    pdf.text('PAYSLIP', pageWidth / 2, yPos, { align: 'center' });
+                    yPos += 10;
+                    
+                    pdf.setFontSize(10);
+                    pdf.setFont(undefined, 'normal');
+                    const now = new Date();
+                    pdf.text(`Generated: ${now.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 14, yPos);
+                    yPos += 5;
+                    pdf.text(`Employee: ${employee ? `${employee.first_name} ${employee.last_name}` : 'Unknown'}`, 14, yPos);
+                    yPos += 5;
+                    pdf.text(`Position: ${employee?.job_title || 'N/A'}`, 14, yPos);
+                    yPos += 5;
+                    pdf.text(`Employee ID: ${employee?.employee_id || 'N/A'}`, 14, yPos);
+                    yPos += 5;
+                    pdf.text(`Issue Date: ${selectedPayslip.issue_date}`, 14, yPos);
+                    yPos += 5;
+                    pdf.text(`Payslip ID: ${selectedPayslip.payslip_id}`, 14, yPos);
+                    if (selectedPayslip.attendance) {
+                      yPos += 5;
+                      pdf.text(`Days Worked: ${selectedPayslip.attendance.totalDays || 0}`, 14, yPos);
+                      yPos += 5;
+                      pdf.text(`Total Hours: ${(selectedPayslip.attendance.totalHours || 0).toFixed(2)}h`, 14, yPos);
+                    }
+                    yPos += 10;
+
+                    pdf.setFontSize(12);
+                    pdf.setFont(undefined, 'bold');
+                    pdf.text('EARNINGS:', 14, yPos);
+                    yPos += 8;
+                    pdf.setFontSize(10);
+                    pdf.setFont(undefined, 'normal');
+                    pdf.text(`Basic Pay: ${formatPeso(amounts.basic || 0)}`, 20, yPos);
+                    yPos += 5;
+                    pdf.text(`Overtime: ${formatPeso(amounts.overtime || 0)}`, 20, yPos);
+                    yPos += 5;
+                    pdf.text(`Bonus: ${formatPeso(amounts.bonus || 0)}`, 20, yPos);
+                    yPos += 5;
+                    pdf.text(`Total Earnings: ${formatPeso((amounts.basic || 0) + (amounts.overtime || 0) + (amounts.bonus || 0))}`, 20, yPos);
+                    yPos += 10;
+
+                    pdf.setFontSize(12);
+                    pdf.setFont(undefined, 'bold');
+                    pdf.text('DEDUCTIONS:', 14, yPos);
+                    yPos += 8;
+                    pdf.setFontSize(10);
+                    pdf.setFont(undefined, 'normal');
+                    pdf.text(`Deductions: -${formatPeso(amounts.deductions || 0)}`, 20, yPos);
+                    yPos += 10;
+
+                    pdf.setFontSize(14);
+                    pdf.setFont(undefined, 'bold');
+                    pdf.text(`NET PAY: ${formatPeso(amounts.net || 0)}`, pageWidth / 2, yPos, { align: 'center' });
+                    
+                    pdf.save(`payslip-${selectedPayslip.payslip_id}.pdf`);
+                    setShowPayslipModal(false);
+                  }} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                    Download PDF
+                  </button>
+                  <button onClick={() => setShowPayslipModal(false)} className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">Close</button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>, document.body)
     }

@@ -211,8 +211,8 @@
   },
   {
     "id": "af5942c5-2adb-45c0-a8ce-60e77fb968e0",
-    "created_at": "2025-11-04T07:14:17.921Z",
-    "payslip_id": "24ff15a5-3344-4a4d-9526-f0fa0b16cf18",
+    "created_at": "2025-12-26T11:36:27.328Z",
+    "payslip_id": "f5ca68e1-c4ff-433f-ba11-8d3f689319dd",
     "payroll_id": "8e9b5f7a-fa0f-4881-9ed6-02310e372eda",
     "employee_id": "62dad5b1-06a1-44e9-bf49-f7c13689f7a1",
     "issue_date": "2020-10-20",
@@ -222,12 +222,17 @@
       "overtime": 232,
       "deductions": 0,
       "net": 20255
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "5f1cd4a6-6943-4a17-ae40-c1a81fd607d3",
-    "created_at": "2025-11-04T07:14:13.915Z",
-    "payslip_id": "8c50ee33-8d35-41fa-965e-70b98a4437a4",
+    "created_at": "2025-12-26T11:36:18.637Z",
+    "payslip_id": "479b6158-80c3-4b43-abd7-5e8148ff8804",
     "payroll_id": "b9c46426-b9d6-4780-8c56-bd94aceb593f",
     "employee_id": "08c66418-6cf5-486e-bb85-f9d15d98cdd4",
     "issue_date": "2222-03-22",
@@ -237,12 +242,17 @@
       "overtime": 22,
       "deductions": 0,
       "net": 11274
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "d1073fab-3673-4114-85f1-c23dbfc96e67",
-    "created_at": "2025-11-04T07:14:12.860Z",
-    "payslip_id": "fdde439b-3f4d-4678-b1e2-f52149ce2053",
+    "created_at": "2025-12-26T11:36:17.013Z",
+    "payslip_id": "432f0148-d185-42df-8d18-871c8a9310c2",
     "payroll_id": "6ffc2d98-caec-4da0-bea8-88ef4a7e8efc",
     "employee_id": "93f94977-7bf8-45d6-a9bc-c9bda4270273",
     "issue_date": "2022-05-22",
@@ -252,12 +262,17 @@
       "overtime": 2500,
       "deductions": 0,
       "net": 105000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "95628c87-cfbc-419f-b637-a12ad628e41c",
-    "created_at": "2025-11-04T07:14:14.948Z",
-    "payslip_id": "c8fc5ffe-a20a-48fc-a72e-94e07442a762",
+    "created_at": "2025-12-26T11:36:20.198Z",
+    "payslip_id": "b3bb4279-8aa8-449c-855d-130a4caac956",
     "payroll_id": "6051cc2d-8a65-4e1f-bc21-cf8e76f38785",
     "employee_id": "5c08f53a-fc24-4f22-a67f-e07304dfa3fa",
     "issue_date": "2222-02-22",
@@ -267,12 +282,17 @@
       "overtime": 22,
       "deductions": 0,
       "net": 23276
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "a21b00f0-b927-4f89-bd9d-e5cf2498a206",
-    "created_at": "2025-11-04T07:14:15.910Z",
-    "payslip_id": "037c2b6e-4f3a-49bd-8324-767e2a55de82",
+    "created_at": "2025-12-26T11:36:22.076Z",
+    "payslip_id": "bc4469f1-a02e-4a17-8ecc-cb2bbea699ab",
     "payroll_id": "55d4d112-5039-4461-8528-8ec1161d5315",
     "employee_id": "5c08f53a-fc24-4f22-a67f-e07304dfa3fa",
     "issue_date": "2025-04-12",
@@ -282,12 +302,17 @@
       "overtime": 1000,
       "deductions": 0,
       "net": 4323
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "ea8b7086-778b-4c47-bf02-bd2aa20c49b2",
-    "created_at": "2025-11-04T07:14:16.912Z",
-    "payslip_id": "86909f92-9bc1-425e-b9f1-6331f8c1e5f4",
+    "created_at": "2025-12-26T11:36:25.693Z",
+    "payslip_id": "317c2b00-fa6b-4a38-b6f7-2c56604c4a99",
     "payroll_id": "835b75f5-7bca-4b80-b9bd-b014c177a843",
     "employee_id": "5c08f53a-fc24-4f22-a67f-e07304dfa3fa",
     "issue_date": "2024-12-04",
@@ -297,57 +322,77 @@
       "overtime": 5000,
       "deductions": 0,
       "net": 155000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "ddf7bd9a-1b3a-40d5-b55a-6ae43c7c11c5",
-    "created_at": "2025-11-04T07:14:11.829Z",
-    "payslip_id": "3fdadb31-edc6-4753-90ac-b56571694694",
+    "created_at": "2025-12-26T11:36:15.388Z",
+    "payslip_id": "267b5ca1-cbb4-496c-aa5e-57876ec9b3e7",
     "payroll_id": "b6a39847-200b-4df1-b714-9a9aebd4eade",
     "employee_id": "e46bcda9-ab8f-41fa-b095-7569fb9b2e47",
     "issue_date": "2025-10-28",
     "amounts": {
-      "basic": 0,
+      "basic": 15000,
       "bonus": 0,
       "overtime": 0,
       "deductions": 0,
-      "net": 0
+      "net": 15000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "daafbfe6-57cb-4cf1-9822-c5544aab8505",
-    "created_at": "2025-11-04T07:14:10.671Z",
-    "payslip_id": "1c6d8805-1043-46e7-ae34-7f413e47170a",
+    "created_at": "2025-12-26T11:36:13.728Z",
+    "payslip_id": "c4f3994b-894c-4387-a790-cd105090b460",
     "payroll_id": "4d50d8d7-fb96-4d33-b204-b76cf271a598",
     "employee_id": "e59ca06a-4874-41e4-8687-6ee38847b0b9",
     "issue_date": "2025-10-28",
     "amounts": {
-      "basic": 0,
+      "basic": 15000,
       "bonus": 0,
       "overtime": 0,
       "deductions": 0,
-      "net": 0
+      "net": 15000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "a1979130-6a3b-49f2-93ee-0d288e3ce981",
-    "created_at": "2025-11-04T07:14:09.602Z",
-    "payslip_id": "a2a21a8f-39ae-4f0b-9f1f-77d34cd86763",
+    "created_at": "2025-12-26T11:36:12.188Z",
+    "payslip_id": "8fccc98f-1eff-4826-a0ef-603377b6de59",
     "payroll_id": "6aa68e59-d748-4ff8-a628-edb0add3f184",
     "employee_id": "f92f9407-ae7e-4863-a4af-0cf50e35a335",
     "issue_date": "2025-10-28",
     "amounts": {
-      "basic": 0,
+      "basic": 17000,
       "bonus": 0,
       "overtime": 0,
       "deductions": 0,
-      "net": 0
+      "net": 17000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "53245192-f126-4c3a-9c0d-91262e123c99",
-    "created_at": "2025-11-04T07:14:21.664Z",
-    "payslip_id": "2f8dd7ee-03a6-4ba7-9393-6f274c933cc6",
+    "created_at": "2025-12-26T11:36:10.514Z",
+    "payslip_id": "db7d2532-9d05-4dcc-8a84-0b35a03c90db",
     "payroll_id": "722eaae2-107f-46dc-bea5-a63a8ec2f872",
     "employee_id": "1c391794-1885-4032-b0bf-5820cbd95802",
     "issue_date": "2025-10-31",
@@ -357,12 +402,17 @@
       "overtime": 0,
       "deductions": 0,
       "net": 35000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
     }
   },
   {
     "id": "b615f5ea-c02f-4162-bebf-bdc11436e8bc",
-    "created_at": "2025-12-23T04:08:59.042Z",
-    "payslip_id": "5485f635-dcb7-41f7-9776-fc056e56d9a6",
+    "created_at": "2025-12-26T11:42:06.214Z",
+    "payslip_id": "6dd4aebf-3445-4594-b7dd-35902a3e6297",
     "payroll_id": "e20d3d4c-142c-4923-8119-50fb14b7186e",
     "employee_id": "1c391794-1885-4032-b0bf-5820cbd95802",
     "issue_date": "2024-12-12",
