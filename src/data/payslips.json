@@ -1,0 +1,122 @@
+[
+  {
+    "id": "c177f1c9-1e4e-47a4-bd6e-488cd38b00ff",
+    "created_at": "2026-01-02T09:12:45.017Z",
+    "payslip_id": "3bab8cbd-296b-4277-8ae9-cbdb7be72405",
+    "payroll_id": "71fe9d2e-bbd2-44d9-9ea5-aa3c8d00df8e",
+    "employee_id": "24a1a1c7-f9be-4944-94e9-e366f54ae61f",
+    "issue_date": "31233-12-31",
+    "amounts": {
+      "basic": 3123123,
+      "bonus": 0,
+      "overtime": 12312,
+      "deductions": 123,
+      "net": 3135312
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
+    }
+  },
+  {
+    "id": "bd9e369b-bb88-473f-a37b-6f7c064bce2b",
+    "created_at": "2026-01-02T09:15:14.846Z",
+    "payslip_id": "146c4c66-b0ec-4d65-a90f-2264173c135a",
+    "payroll_id": "15f9ad0a-8747-41be-a076-307555f13451",
+    "employee_id": "24a1a1c7-f9be-4944-94e9-e366f54ae61f",
+    "issue_date": "2024-12-12",
+    "amounts": {
+      "basic": 18000,
+      "bonus": 5000,
+      "overtime": 600,
+      "deductions": 4000,
+      "net": 19600
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
+    }
+  },
+  {
+    "id": "0a1b6115-62d9-47a7-83d1-397a67b049f5",
+    "created_at": "2026-01-02T09:16:39.953Z",
+    "payslip_id": "7c7c0577-f77f-4ffc-9ef5-5b4c2026fb66",
+    "payroll_id": "ebd41269-d8ba-4a67-9ef6-fc5d3ccda54c",
+    "employee_id": "dd3a0dcb-5dd6-4601-8cd5-506a0cdb230c",
+    "issue_date": "2025-01-02",
+    "amounts": {
+      "basic": 21000,
+      "bonus": 6000,
+      "overtime": 1000,
+      "deductions": 6000,
+      "net": 22000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
+    }
+  },
+  {
+    "id": "b3c2c145-f4b6-4507-9bae-bfa08277ba5b",
+    "created_at": "2026-01-02T09:18:09.929Z",
+    "payslip_id": "d29ac539-7f46-47ad-8a0c-1e66a3404f5f",
+    "payroll_id": "39cab7fa-96cb-43ec-8af8-71afb64e45ae",
+    "employee_id": "992c9520-8de8-4a62-83f4-a0c569b4ec75",
+    "issue_date": "2025-10-21",
+    "amounts": {
+      "basic": 18000,
+      "bonus": 5000,
+      "overtime": 1000,
+      "deductions": 4000,
+      "net": 20000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
+    }
+  },
+  {
+    "id": "47d04fa1-930b-4c2e-96d6-052e5f57aef1",
+    "created_at": "2026-01-02T09:18:52.242Z",
+    "payslip_id": "788e7e47-8bba-404e-aead-f9fb83bbc4eb",
+    "payroll_id": "8750b9a0-f83a-43ae-b5af-ab8a13e3c4d4",
+    "employee_id": "9244a98d-07dc-4546-bc7a-b87a0646d155",
+    "issue_date": "2024-02-21",
+    "amounts": {
+      "basic": 16000,
+      "bonus": 5000,
+      "overtime": 800,
+      "deductions": 3000,
+      "net": 18800
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
+    }
+  },
+  {
+    "id": "bc3635ba-e2da-4464-9fbf-2042e7cb2c62",
+    "created_at": "2026-01-02T09:19:41.071Z",
+    "payslip_id": "1b2ab903-b213-4603-b396-b30026270480",
+    "payroll_id": "b3ebe45b-d741-448c-8de1-be7465a763b4",
+    "employee_id": "94b0e4b9-de99-4046-b875-734f8fec8587",
+    "issue_date": "2025-03-12",
+    "amounts": {
+      "basic": 60000,
+      "bonus": 25000,
+      "overtime": 1000,
+      "deductions": 12000,
+      "net": 74000
+    },
+    "attendance": {
+      "totalHours": 0,
+      "totalDays": 0,
+      "records": []
+    }
+  }
+]

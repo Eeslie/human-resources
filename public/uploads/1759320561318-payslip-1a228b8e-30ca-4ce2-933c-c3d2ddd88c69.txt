@@ -1,0 +1,21 @@
+
+PAYSLIP
+========
+Employee: Mark Laurance Casero
+Employee ID: 7af6e2df-2745-47ef-a190-baef785e4dfd
+Issue Date: 2025-10-01
+Payslip ID: 1a228b8e-30ca-4ce2-933c-c3d2ddd88c69
+
+EARNINGS:
+---------
+Basic Pay:     $20,000
+Overtime:      $232
+Bonus:         $23
+Total Earnings: $20,255
+
+DEDUCTIONS:
+-----------
+Deductions:    -$0
+
+NET PAY:       $20,255
+                                  

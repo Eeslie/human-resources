@@ -1,0 +1,74 @@
+[
+  {
+    "id": "71fe9d2e-bbd2-44d9-9ea5-aa3c8d00df8e",
+    "created_at": "2026-01-02T09:02:18.609Z",
+    "payroll_id": "2e52ff15-cf38-4712-993d-f4348df4083e",
+    "employee_id": "24a1a1c7-f9be-4944-94e9-e366f54ae61f",
+    "salary_base": 55000,
+    "bonus": 30000,
+    "overtime": 1000,
+    "deductions": 15000,
+    "payroll_date": "31233-12-31",
+    "status": "Approved"
+  },
+  {
+    "id": "15f9ad0a-8747-41be-a076-307555f13451",
+    "created_at": "2026-01-02T09:15:13.958Z",
+    "payroll_id": "0f43779c-ff3f-4917-813e-09bc943a83ff",
+    "employee_id": "24a1a1c7-f9be-4944-94e9-e366f54ae61f",
+    "salary_base": 55000,
+    "bonus": 12000,
+    "overtime": 600,
+    "deductions": 14000,
+    "payroll_date": "2024-12-12",
+    "status": "Approved"
+  },
+  {
+    "id": "ebd41269-d8ba-4a67-9ef6-fc5d3ccda54c",
+    "created_at": "2026-01-02T09:16:39.104Z",
+    "payroll_id": "6512599c-80b4-49b5-b6bc-c7f25dbf151b",
+    "employee_id": "dd3a0dcb-5dd6-4601-8cd5-506a0cdb230c",
+    "salary_base": 21000,
+    "bonus": 6000,
+    "overtime": 1000,
+    "deductions": 6000,
+    "payroll_date": "2025-01-02",
+    "status": "Approved"
+  },
+  {
+    "id": "39cab7fa-96cb-43ec-8af8-71afb64e45ae",
+    "created_at": "2026-01-02T09:18:08.990Z",
+    "payroll_id": "e1a5d747-2597-4f0f-a9e2-1f4ecfdf46fa",
+    "employee_id": "992c9520-8de8-4a62-83f4-a0c569b4ec75",
+    "salary_base": 18000,
+    "bonus": 5000,
+    "overtime": 1000,
+    "deductions": 4000,
+    "payroll_date": "2025-10-21",
+    "status": "Approved"
+  },
+  {
+    "id": "8750b9a0-f83a-43ae-b5af-ab8a13e3c4d4",
+    "created_at": "2026-01-02T09:18:51.041Z",
+    "payroll_id": "2654e6b1-859b-419b-a860-b3ddc94ffca8",
+    "employee_id": "9244a98d-07dc-4546-bc7a-b87a0646d155",
+    "salary_base": 16000,
+    "bonus": 5000,
+    "overtime": 800,
+    "deductions": 3000,
+    "payroll_date": "2024-02-21",
+    "status": "Approved"
+  },
+  {
+    "id": "b3ebe45b-d741-448c-8de1-be7465a763b4",
+    "created_at": "2026-01-02T09:19:40.056Z",
+    "payroll_id": "47a279d5-ad20-4950-8a56-075210a9ef5c",
+    "employee_id": "94b0e4b9-de99-4046-b875-734f8fec8587",
+    "salary_base": 60000,
+    "bonus": 25000,
+    "overtime": 1000,
+    "deductions": 12000,
+    "payroll_date": "2025-03-12",
+    "status": "Approved"
+  }
+]

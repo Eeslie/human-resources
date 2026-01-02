@@ -1,0 +1,26 @@
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440010",
+    "name": "Kitchen",
+    "description": "Food preparation and service",
+    "created_at": "2022-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440011",
+    "name": "Front of House",
+    "description": "Customer service and sales",
+    "created_at": "2022-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440012",
+    "name": "Management",
+    "description": "Administrative and management functions",
+    "created_at": "2022-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440013",
+    "name": "Maintenance",
+    "description": "Facility and equipment maintenance",
+    "created_at": "2022-01-01T00:00:00.000Z"
+  }
+]
