@@ -1,18 +1,53 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '../../../lib/supabaseServer';
 import { getPayrolls as getPayrollsFs, savePayrolls as savePayrollsFs, upsertPayroll as upsertPayrollFs } from '../../../lib/data';
+import { getUserFromRequest, isHR } from '../../../lib/auth-helpers';
 
-export async function GET() {
+export async function GET(request) {
 	try {
+		const user = getUserFromRequest(request);
 		const supabase = getSupabaseServerClient();
-		const { data, error } = await supabase.from('payroll').select('*').order('created_at', { ascending: false });
+		
+		let query = supabase.from('payroll').select('*');
+		
+		// Apply role-based filtering
+		if (!user) {
+			return NextResponse.json([]);
+		}
+		
+		if (isHR(user)) {
+			// HR sees all payroll data
+			query = query.order('created_at', { ascending: false });
+		} else if (user.employee_id) {
+			// Employee sees only their own payroll
+			query = query.eq('employee_id', user.employee_id).order('created_at', { ascending: false });
+		} else {
+			return NextResponse.json([]);
+		}
+		
+		const { data, error } = await query;
 		if (error) throw error;
 		if (Array.isArray(data) && data.length > 0) return NextResponse.json(data);
+		
+		// Fallback to file-based storage
 		const fsData = await getPayrollsFs();
-		return NextResponse.json(fsData ?? []);
+		if (isHR(user)) {
+			return NextResponse.json(fsData ?? []);
+		} else if (user.employee_id) {
+			const filtered = (fsData || []).filter(p => p.employee_id === user.employee_id);
+			return NextResponse.json(filtered);
+		}
+		return NextResponse.json([]);
 	} catch (err) {
 		const fsData = await getPayrollsFs();
-		return NextResponse.json(fsData ?? []);
+		const user = getUserFromRequest(request);
+		if (isHR(user)) {
+			return NextResponse.json(fsData ?? []);
+		} else if (user && user.employee_id) {
+			const filtered = (fsData || []).filter(p => p.employee_id === user.employee_id);
+			return NextResponse.json(filtered);
+		}
+		return NextResponse.json([]);
 	}
 }
 

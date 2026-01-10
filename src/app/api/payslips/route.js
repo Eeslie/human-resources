@@ -1,9 +1,21 @@
 import { NextResponse } from 'next/server';
 import { getPayslips, addPayslip, savePayslips } from '../../../lib/data';
+import { getUserFromRequest, isHR } from '../../../lib/auth-helpers';
 
-export async function GET() {
+export async function GET(request) {
+	const user = getUserFromRequest(request);
 	const payslips = await getPayslips();
-	return NextResponse.json(payslips);
+	
+	// Apply role-based filtering
+	if (isHR(user)) {
+		return NextResponse.json(payslips);
+	} else if (user && user.employee_id) {
+		// Employees see only their own payslips
+		const filtered = payslips.filter(p => p.employee_id === user.employee_id);
+		return NextResponse.json(filtered);
+	}
+	
+	return NextResponse.json([]);
 }
 
 export async function POST(request) {

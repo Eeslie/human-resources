@@ -37,7 +37,7 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Supabase setup
 
-Create a `.env.local` in `web/` with:
+Create a `.env.local` in the root directory with:
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=your_project_url
@@ -45,3 +45,43 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 ```
 
 Then visit your Supabase project to create the schema (SQL provided in `src/lib/supabase-schema.sql`).
+
+## Email Setup (Nodemailer - SMTP)
+
+To enable email sending for interview invitations, add to your `.env.local`:
+
+### Option 1: Gmail (Recommended for Testing)
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+```
+
+**For Gmail, you need to use an App Password:**
+1. Go to your Google Account: https://myaccount.google.com/
+2. Enable 2-Step Verification if not already enabled
+3. Go to Security > 2-Step Verification > App Passwords
+4. Generate an app password for "Mail"
+5. Use that app password (not your regular Gmail password) as `SMTP_PASSWORD`
+
+### Option 2: Outlook/Office 365
+```
+SMTP_HOST=smtp.office365.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@outlook.com
+SMTP_PASSWORD=your-password
+```
+
+### Option 3: Other SMTP Providers
+```
+SMTP_HOST=your-smtp-server.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@domain.com
+SMTP_PASSWORD=your-password
+```
+
+**After adding credentials, restart your development server!**

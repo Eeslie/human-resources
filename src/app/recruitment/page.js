@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { SidebarInset } from '@humanresource/components/ui/sidebar';
+import HROnlyRoute from '../../components/HROnlyRoute';
 
 export default function Recruitment() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -22,7 +23,7 @@ export default function Recruitment() {
 		return (
 			<div className="fixed inset-0 z-50 flex items-center justify-center">
 				<div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
-				<div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+				<div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
 					<div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
 						<h3 className="text-lg font-semibold text-black">{title}</h3>
 						<button onClick={onClose} className="text-slate-500 hover:text-slate-700">✕</button>
@@ -428,7 +429,7 @@ export default function Recruitment() {
 		return (
 			<div className="fixed inset-0 z-50 flex items-center justify-center">
 				<div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
-				<div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+				<div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
 					<div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
 						<h3 className="text-lg font-semibold text-black">Schedule Interview</h3>
 						<button onClick={onClose} className="text-slate-500 hover:text-slate-700">✕</button>
@@ -490,6 +491,232 @@ export default function Recruitment() {
 		);
 	}
 
+	// Interview & Offer Modal Component (similar pattern to ApplicantAddModal)
+	function InterviewOfferModal({ open, onClose, applicantTarget, onSuccess }) {
+		const [formData, setFormData] = useState({ 
+			interviewDate: new Date().toISOString().slice(0,10), 
+			interviewTime: '10:00',
+			interviewPlace: '',
+			salary: ''
+		});
+
+		const handleInputChange = (field, value) => {
+			setFormData(prev => ({ ...prev, [field]: value }));
+		};
+
+		const handleSubmit = async (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			
+			if (!applicantTarget?.id || !applicantTarget?.email) {
+				alert('⚠️ Applicant email is required to send the invitation.');
+				return;
+			}
+
+			// Validate required fields
+			if (!formData.interviewDate || !formData.interviewTime || !formData.interviewPlace || !formData.salary) {
+				alert('⚠️ Please fill in all fields: Date, Time, Place, and Salary are required.');
+				return;
+			}
+
+			try {
+				// Prepare data
+				const applicantName = applicantTarget.full_name || applicantTarget.name || '';
+				const position = applicantTarget.position || '';
+
+				// Send email
+				const emailRes = await fetch('/api/email', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						to: applicantTarget.email,
+						applicantName,
+						position,
+						interviewDate: formData.interviewDate,
+						interviewTime: formData.interviewTime,
+						interviewPlace: formData.interviewPlace,
+						salary: formData.salary,
+						subject: `Interview Invitation - ${position} Position`
+					})
+				});
+
+				const emailData = await emailRes.json();
+				
+				if (!emailRes.ok) {
+					// Provide user-friendly error message
+					if (emailData.error === 'Email domain not verified' || emailData.message?.includes('domain is not verified')) {
+						throw new Error(`Email domain not verified. ${emailData.suggestion || 'Please set RESEND_FROM_EMAIL=onboarding@resend.dev in your .env.local for testing, or verify your domain at https://resend.com/domains'}`);
+					}
+					throw new Error(emailData.message || emailData.error || 'Failed to send email');
+				}
+
+				// Create interview record
+				const interviewBody = {
+					applicant_id: applicantTarget.id,
+					candidate: applicantName,
+					position: position,
+					date: formData.interviewDate,
+					time: formData.interviewTime,
+					location: formData.interviewPlace,
+					type: 'Interview',
+					status: 'Scheduled'
+				};
+				
+				const interviewRes = await fetch('/api/interviews', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(interviewBody)
+				});
+
+				if (!interviewRes.ok) {
+					console.warn('Failed to create interview record, but email was sent');
+				}
+
+				// Create offer record
+				const offerRes = await fetch('/api/offers', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						applicant_id: applicantTarget.id,
+						candidate: applicantName,
+						position: position,
+						salary: formData.salary
+					})
+				});
+
+				if (!offerRes.ok) {
+					console.warn('Failed to create offer record, but email was sent');
+				}
+
+				// Update applicant status to "Interview Scheduled"
+				await fetch(`/api/applicants/${applicantTarget.id}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ status: 'Interview Scheduled' })
+				});
+
+				// Show success message
+				alert(`✅ Email sent successfully to ${applicantTarget.email}!`);
+				
+				// Reset form and close
+				setFormData({ 
+					interviewDate: new Date().toISOString().slice(0,10), 
+					interviewTime: '10:00',
+					interviewPlace: '',
+					salary: ''
+				});
+				if (onSuccess) onSuccess();
+				onClose();
+			} catch (error) {
+				console.error('Error sending interview invitation:', error);
+				alert(`❌ Error: ${error.message || 'Failed to send email. Please check your email configuration.'}`);
+			}
+		};
+
+		if (!open) return null;
+		return (
+			<div className="fixed inset-0 z-50 flex items-center justify-center">
+				<div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
+				<div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
+					<div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+						<h3 className="text-lg font-semibold text-black">Send Interview Invitation & Offer</h3>
+						<button onClick={onClose} className="text-slate-500 hover:text-slate-700">✕</button>
+					</div>
+					<div className="p-6">
+						<form onSubmit={handleSubmit} className="space-y-4">
+							<div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+								<p className="text-sm text-blue-800">
+									<strong>Recipient:</strong> {applicantTarget?.full_name || applicantTarget?.name || 'N/A'} ({applicantTarget?.email || 'No email'})
+								</p>
+								<p className="text-sm text-blue-700 mt-1">
+									<strong>Position:</strong> {applicantTarget?.position || 'Not specified'}
+								</p>
+							</div>
+
+							<div className="space-y-3">
+								<div>
+									<label htmlFor="interview-date-input" className="block text-sm font-medium text-slate-700 mb-1">Interview Date *</label>
+									<input 
+										id="interview-date-input"
+										type="date"
+										className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" 
+										value={formData.interviewDate} 
+										onChange={(e) => handleInputChange('interviewDate', e.target.value)} 
+										required 
+									/>
+								</div>
+
+								<div>
+									<label htmlFor="interview-time-input" className="block text-sm font-medium text-slate-700 mb-1">Interview Time *</label>
+									<input 
+										id="interview-time-input"
+										type="time"
+										className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" 
+										value={formData.interviewTime} 
+										onChange={(e) => handleInputChange('interviewTime', e.target.value)} 
+										required 
+									/>
+								</div>
+
+								<div>
+									<label htmlFor="interview-place-input" className="block text-sm font-medium text-slate-700 mb-1">Interview Place/Location *</label>
+									<input 
+										id="interview-place-input"
+										type="text"
+										className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" 
+										placeholder="e.g., Main Office, 123 Business St, Suite 100"
+										value={formData.interviewPlace}
+										onChange={(e) => handleInputChange('interviewPlace', e.target.value)}
+										autoComplete="off"
+										spellCheck={false}
+										required 
+									/>
+								</div>
+
+								<div>
+									<label htmlFor="salary-offer-input" className="block text-sm font-medium text-slate-700 mb-1">Salary Offer *</label>
+									<input 
+										id="salary-offer-input"
+										type="text"
+										className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" 
+										placeholder="e.g., $50,000 - $70,000 per year"
+										value={formData.salary}
+										onChange={(e) => handleInputChange('salary', e.target.value)}
+										autoComplete="off"
+										spellCheck={false}
+										required 
+									/>
+								</div>
+							</div>
+
+							<div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4">
+								<p className="text-xs text-amber-800">
+									<strong>Note:</strong> An elegant email will be automatically sent to the applicant with all the details provided above. The email will include interview date, time, location, position, and salary offer.
+								</p>
+							</div>
+
+							<div className="flex justify-end space-x-2 pt-2">
+								<button 
+									type="button" 
+									onClick={onClose} 
+									className="px-4 py-2 rounded-lg border border-slate-300 text-black hover:bg-slate-50 transition-colors"
+								>
+									Cancel
+								</button>
+								<button 
+									type="submit" 
+									className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-green-600 text-white hover:from-blue-700 hover:to-green-700 transition-colors font-medium shadow-md"
+								>
+									📧 Send Email & Save
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
 	// Jobs modals state
 	const [jobCreateOpen, setJobCreateOpen] = useState(false);
 	const [jobEditOpen, setJobEditOpen] = useState(false);
@@ -501,11 +728,15 @@ export default function Recruitment() {
 	const [applicantAddOpen, setApplicantAddOpen] = useState(false);
 	const [applicantEditOpen, setApplicantEditOpen] = useState(false);
 	const [applicantStatusOpen, setApplicantStatusOpen] = useState(false);
-	const [applicantInterviewOpen, setApplicantInterviewOpen] = useState(false);
-	const [applicantOfferOpen, setApplicantOfferOpen] = useState(false);
+	const [applicantInterviewOfferOpen, setApplicantInterviewOfferOpen] = useState(false);
 	const [applicantTarget, setApplicantTarget] = useState(null);
   const [applicantForm, setApplicantForm] = useState({ full_name: '', position: '', email: '', phone: '', experience: '', rating: 0, status: 'Under Review' });
-  const [offerForm, setOfferForm] = useState({ salary: '' });
+  const [interviewOfferForm, setInterviewOfferForm] = useState({ 
+    interviewDate: new Date().toISOString().slice(0,10), 
+    interviewTime: '10:00',
+    interviewPlace: '',
+    salary: ''
+  });
 
 	// Interviews modals state
 	const [interviewAddOpen, setInterviewAddOpen] = useState(false);
@@ -559,8 +790,9 @@ export default function Recruitment() {
     newHires: 0 // Can be calculated from offers accepted if needed
   };
 
-  return (<>
-    <SidebarInset className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+  return (
+    <HROnlyRoute>
+      <SidebarInset className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Navigation Header */}
       <nav className="bg-white shadow-lg border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -959,39 +1191,17 @@ export default function Recruitment() {
                         </button>
                         <button 
                           onClick={() => { 
-                            if (!applicant.email && !applicant.phone) {
-                              alert('⚠️ Please add contact information (email or phone) before scheduling an interview.');
+                            if (!applicant.email) {
+                              alert('⚠️ Please add an email address before sending interview invitation and offer.');
                               return;
                             }
                             setApplicantTarget(applicant); 
-                            setInterviewForm({ 
-                              candidate: applicant.full_name || applicant.name || '', 
-                              position: applicant.position || '', 
-                              date: new Date().toISOString().slice(0,10), 
-                              time: '10:00',
-                              applicant_id: applicant.id
-                            }); 
-                            setApplicantInterviewOpen(true); 
+                            setApplicantInterviewOfferOpen(true); 
                           }} 
-                          className="flex items-center justify-center gap-2 bg-blue-600 text-white py-2 px-3 rounded-lg hover:bg-blue-700 text-sm font-medium transition-all shadow-md"
+                          className="col-span-2 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-green-600 text-white py-2 px-3 rounded-lg hover:from-blue-700 hover:to-green-700 text-sm font-medium transition-all shadow-md"
                         >
-                          <span>🗓️</span>
-                          <span>Interview</span>
-                        </button>
-                        <button 
-                          onClick={() => { 
-                            if ((applicant.status || '') === 'Offered') {
-                              alert('ℹ️ An offer has already been extended to this applicant.');
-                              return;
-                            }
-                            setApplicantTarget(applicant); 
-                            setOfferForm({ salary: '' }); 
-                            setApplicantOfferOpen(true); 
-                          }} 
-                          className="flex items-center justify-center gap-2 bg-green-600 text-white py-2 px-3 rounded-lg hover:bg-green-700 text-sm font-medium transition-all shadow-md"
-                        >
-                          <span>💼</span>
-                          <span>Offer</span>
+                          <span>📧</span>
+                          <span>Interview & Offer</span>
                         </button>
                         <button 
                           onClick={() => { 
@@ -1434,30 +1644,15 @@ export default function Recruitment() {
       </form>
     </Modal>
 
-    <Modal open={applicantInterviewOpen} title="Schedule Interview" onClose={() => setApplicantInterviewOpen(false)}>
-      <form onSubmit={async (e) => { e.preventDefault(); if (!applicantTarget?.id) return; const body = { applicant_id: applicantTarget.id, candidate: interviewForm.candidate, position: interviewForm.position, date: interviewForm.date, time: interviewForm.time, type: 'Interview' }; const res = await fetch('/api/interviews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (res.ok) { setApplicantInterviewOpen(false); fetchInterviews(); } }} className="space-y-4">
-        <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="Candidate" value={interviewForm.candidate} onChange={(e) => setInterviewForm({ ...interviewForm, candidate: e.target.value })} required />
-        <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="Position" value={interviewForm.position} onChange={(e) => setInterviewForm({ ...interviewForm, position: e.target.value })} />
-        <div className="grid grid-cols-2 gap-3">
-          <input className="border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="YYYY-MM-DD" value={interviewForm.date} onChange={(e) => setInterviewForm({ ...interviewForm, date: e.target.value })} />
-          <input className="border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="HH:MM" value={interviewForm.time} onChange={(e) => setInterviewForm({ ...interviewForm, time: e.target.value })} />
-        </div>
-        <div className="flex justify-end space-x-2">
-          <button type="button" onClick={()=>setApplicantInterviewOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-black hover:bg-slate-50 transition-colors">Cancel</button>
-          <button type="submit" className="px-4 py-2 rounded-lg bg-orange-900 text-white hover:bg-orange-800 transition-colors">Schedule</button>
-        </div>
-      </form>
-    </Modal>
-
-    <Modal open={applicantOfferOpen} title="Issue Offer" onClose={() => setApplicantOfferOpen(false)}>
-      <form onSubmit={async (e) => { e.preventDefault(); if (!applicantTarget?.id) return; const res = await fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ applicant_id: applicantTarget.id, candidate: applicantTarget.full_name || applicantTarget.name, position: applicantTarget.position, salary: offerForm.salary }) }); if (res.ok) { await fetch(`/api/applicants/${applicantTarget.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Offered' }) }); setApplicantOfferOpen(false); fetchApplicants(); } }} className="space-y-4">
-        <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" placeholder="Salary" value={offerForm.salary} onChange={(e) => setOfferForm({ ...offerForm, salary: e.target.value })} required />
-        <div className="flex justify-end space-x-2">
-          <button type="button" onClick={()=>setApplicantOfferOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-black hover:bg-slate-50 transition-colors">Cancel</button>
-          <button type="submit" className="px-4 py-2 rounded-lg bg-green-900 text-white hover:bg-green-800 transition-colors">Send Offer</button>
-        </div>
-      </form>
-    </Modal>
-
-  </>);
+    <InterviewOfferModal 
+      open={applicantInterviewOfferOpen} 
+      onClose={() => setApplicantInterviewOfferOpen(false)}
+      onSuccess={() => {
+        fetchInterviews();
+        fetchApplicants();
+      }}
+      applicantTarget={applicantTarget}
+    />
+    </HROnlyRoute>
+  );
 }

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import jsPDF from 'jspdf';
 import { SidebarInset } from '@humanresource/components/ui/sidebar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@humanresource/components/ui/tooltip';
+import HROnlyRoute from '../../components/HROnlyRoute';
+import { authFetch } from '../../lib/api-client';
 
 export default function Payroll() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -36,23 +38,23 @@ export default function Payroll() {
 
   // Fetch helpers
   async function fetchEmployees() {
-    const res = await fetch('/api/employees', { cache: 'no-store' });
+    const res = await authFetch('/api/employees', { cache: 'no-store' });
     const data = await res.json();
-    setEmployees(data);
+    setEmployees(Array.isArray(data) ? data : []);
   }
   async function fetchPayrolls() {
-    const res = await fetch('/api/payroll', { cache: 'no-store' });
+    const res = await authFetch('/api/payroll', { cache: 'no-store' });
     const data = await res.json();
     setPayrolls(Array.isArray(data) ? data : []);
   }
   async function fetchPayslips() {
-    const res = await fetch('/api/payslips', { cache: 'no-store' });
+    const res = await authFetch('/api/payslips', { cache: 'no-store' });
     const data = await res.json();
-    setPayslips(data);
+    setPayslips(Array.isArray(data) ? data : []);
   }
 
   async function fetchAttendance() {
-    const res = await fetch('/api/attendance', { cache: 'no-store' });
+    const res = await authFetch('/api/attendance', { cache: 'no-store' });
     const data = await res.json();
     setAttendanceData(data);
   }
@@ -718,8 +720,8 @@ export default function Payroll() {
 
 
   return (
-    <>
-    <SidebarInset className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <HROnlyRoute>
+      <SidebarInset className="min-h-screen bg-gradient-to-br from-orange-50 to-orange-100">
       {/* Navigation Header */}
       <nav className="bg-white shadow-lg border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1610,5 +1612,6 @@ export default function Payroll() {
         </div>
       </div>, document.body)
     }
-  </>);
+    </HROnlyRoute>
+  );
 }

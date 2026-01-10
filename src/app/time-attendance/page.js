@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { SidebarInset } from '@humanresource/components/ui/sidebar';
+import { authFetch } from '../../lib/api-client';
+import { useAuth } from '../../components/AuthProvider';
 
 // Leave limitations per type
 const leaveLimitations = {
@@ -18,6 +20,7 @@ export default function TimeAttendance() {
   const [employees, setEmployees] = useState([]);
   const [attendanceToday, setAttendanceToday] = useState([]);
   const [recentLeaves, setRecentLeaves] = useState([]);
+  const [allLeaves, setAllLeaves] = useState([]);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [attendanceForm, setAttendanceForm] = useState({ id: null, employee_id: '', date: '', time_in: '', time_out: '', hours_worked: '' });
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
@@ -27,6 +30,7 @@ export default function TimeAttendance() {
   const [leaveFilter, setLeaveFilter] = useState('All Types');
   const [selectedDate, setSelectedDate] = useState(isoToday());
   const [currentPage, setCurrentPage] = useState({ attendance: 1, leave: 1 });
+  const [currentTime, setCurrentTime] = useState(new Date());
   const itemsPerPage = 10;
 
   const tabs = [
@@ -54,9 +58,9 @@ export default function TimeAttendance() {
   useEffect(() => {
     async function loadAll() {
       const [empRes, attRes, leaveRes] = await Promise.all([
-        fetch('/api/employees', { cache: 'no-store' }),
-        fetch(`/api/attendance?date=${selectedDate}`, { cache: 'no-store' }),
-        fetch('/api/leave', { cache: 'no-store' })
+        authFetch('/api/employees', { cache: 'no-store' }),
+        authFetch(`/api/attendance?date=${selectedDate}`, { cache: 'no-store' }),
+        authFetch('/api/leave', { cache: 'no-store' })
       ]);
       const [emp, att, leaves] = await Promise.all([
         empRes.json().catch(() => []),
@@ -66,16 +70,25 @@ export default function TimeAttendance() {
       
       setEmployees(Array.isArray(emp) ? emp : []);
       setAttendanceToday(Array.isArray(att) ? att : []);
+      setAllLeaves(Array.isArray(leaves) ? leaves : []);
       setRecentLeaves(Array.isArray(leaves) ? leaves.slice(0, 6) : []);
     }
     loadAll();
   }, [selectedDate]);
 
+  // Update current time every minute for real-time avg hours calculation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
   // Ensure UI reflects new attendance rows added to DB by reloading when modal closes
   useEffect(() => {
     if (!attendanceModalOpen) {
       (async () => {
-        const attRes = await fetch(`/api/attendance?date=${selectedDate}`, { cache: 'no-store' });
+        const attRes = await authFetch(`/api/attendance?date=${selectedDate}`, { cache: 'no-store' });
         const att = await attRes.json().catch(() => []);
         setAttendanceToday(Array.isArray(att) ? att : []);
       })();
@@ -86,22 +99,22 @@ export default function TimeAttendance() {
     e?.preventDefault?.();
     const payload = { employee_id: attendanceForm.employee_id, date: attendanceForm.date, time_in: attendanceForm.time_in || null, time_out: attendanceForm.time_out || null, hours_worked: attendanceForm.hours_worked || null };
     if (attendanceForm.id) {
-      await fetch('/api/attendance', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: attendanceForm.id, updates: payload }) });
+      await authFetch('/api/attendance', { method: 'PUT', body: JSON.stringify({ id: attendanceForm.id, updates: payload }) });
     } else {
-      await fetch('/api/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      await authFetch('/api/attendance', { method: 'POST', body: JSON.stringify(payload) });
     }
     setAttendanceModalOpen(false);
     // refresh today attendance
-    const attRes = await fetch(`/api/attendance?date=${encodeURIComponent(attendanceForm.date || isoToday())}`, { cache: 'no-store' });
+    const attRes = await authFetch(`/api/attendance?date=${encodeURIComponent(attendanceForm.date || isoToday())}`, { cache: 'no-store' });
     const att = await attRes.json().catch(() => []);
     setAttendanceToday(Array.isArray(att) ? att : []);
   }
 
   async function deleteAttendance() {
     if (!attendanceForm.id) return;
-    await fetch(`/api/attendance?id=${encodeURIComponent(attendanceForm.id)}`, { method: 'DELETE' });
+    await authFetch(`/api/attendance?id=${encodeURIComponent(attendanceForm.id)}`, { method: 'DELETE' });
     setAttendanceModalOpen(false);
-    const attRes = await fetch(`/api/attendance?date=${isoToday()}`, { cache: 'no-store' });
+    const attRes = await authFetch(`/api/attendance?date=${isoToday()}`, { cache: 'no-store' });
     const att = await attRes.json().catch(() => []);
     setAttendanceToday(Array.isArray(att) ? att : []);
   }
@@ -166,24 +179,22 @@ export default function TimeAttendance() {
     try {
       if (existing?.id) {
         // Update existing record
-        const res = await fetch('/api/attendance', { 
+        const res = await authFetch('/api/attendance', { 
           method: 'PUT', 
-          headers: { 'Content-Type': 'application/json' }, 
           body: JSON.stringify({ id: existing.id, updates: payload }) 
         });
         if (!res.ok) throw new Error('Failed to update attendance');
       } else {
         // Create new record
-        const res = await fetch('/api/attendance', { 
+        const res = await authFetch('/api/attendance', { 
           method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
           body: JSON.stringify(payload) 
         });
         if (!res.ok) throw new Error('Failed to create attendance');
       }
       
       // Refresh attendance data immediately
-      const attRes = await fetch(`/api/attendance?date=${today}`, { cache: 'no-store' });
+      const attRes = await authFetch(`/api/attendance?date=${today}`, { cache: 'no-store' });
       const att = await attRes.json().catch(() => []);
       setAttendanceToday(Array.isArray(att) ? att : []);
       
@@ -220,6 +231,7 @@ export default function TimeAttendance() {
       setLeaveModalOpen(false);
       const res = await fetch('/api/leave', { cache: 'no-store' });
       const leaves = await res.json().catch(() => []);
+      setAllLeaves(Array.isArray(leaves) ? leaves : []);
       setRecentLeaves(Array.isArray(leaves) ? leaves.slice(0, 6) : []);
     } catch (err) {
       console.error('Leave creation error:', err);
@@ -231,6 +243,7 @@ export default function TimeAttendance() {
     await fetch(`/api/leave?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     const res = await fetch('/api/leave', { cache: 'no-store' });
     const leaves = await res.json().catch(() => []);
+    setAllLeaves(Array.isArray(leaves) ? leaves : []);
     setRecentLeaves(Array.isArray(leaves) ? leaves.slice(0, 6) : []);
   }
 
@@ -238,26 +251,91 @@ export default function TimeAttendance() {
 
   async function updateLeaveStatus(id, status) {
     if (!id) return;
-    await fetch('/api/leave', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, updates: { status } }) });
-    const res = await fetch('/api/leave', { cache: 'no-store' });
+    await authFetch('/api/leave', { method: 'PUT', body: JSON.stringify({ id, updates: { status } }) });
+    const res = await authFetch('/api/leave', { cache: 'no-store' });
     const leaves = await res.json().catch(() => []);
+    setAllLeaves(Array.isArray(leaves) ? leaves : []);
     setRecentLeaves(Array.isArray(leaves) ? leaves.slice(0, 6) : []);
   }
 
   const attendanceStats = useMemo(() => {
     const total = employees.length || 0;
-    // Present is any employee with a time_in today
-    const present = (attendanceToday || []).filter(a => a.time_in).length;
-    const onLeave = (recentLeaves || []).filter(l => {
-      const today = isoToday();
-      return (!l.status || l.status !== 'Rejected') && l.start_date <= today && l.end_date >= today;
-    }).length;
-    const absent = Math.max(0, total - present - onLeave);
-    const avgHours = (attendanceToday || []).length
-      ? +((attendanceToday.reduce((s, r) => s + Number(r.hours_worked || 0), 0) / attendanceToday.length) || 0).toFixed(2)
+    const today = isoToday();
+    const currentTimeStr = currentTime.toTimeString().slice(0, 5); // HH:MM format
+    
+    // Get all employees on leave today (approved leave requests)
+    const employeesOnLeave = new Set();
+    (allLeaves || []).forEach(l => {
+      if (l.status === 'Approved' && l.start_date <= today && l.end_date >= today) {
+        employeesOnLeave.add(String(l.employee_id));
+      }
+    });
+    
+    // Create a map of attendance by employee_id
+    const attendanceByEmp = new Map();
+    (attendanceToday || []).forEach(a => {
+      attendanceByEmp.set(String(a.employee_id), a);
+    });
+    
+    // Calculate present (both time_in AND time_out), late, and hours
+    let present = 0;
+    let late = 0;
+    const hoursArray = [];
+    
+    employees.forEach(emp => {
+      const empId = String(emp.id);
+      // Skip if on leave
+      if (employeesOnLeave.has(empId)) return;
+      
+      const att = attendanceByEmp.get(empId);
+      if (att?.time_in && att?.time_out) {
+        // Has both time_in and time_out - present
+        present++;
+        
+        // Check if late (time_in after 9:00 AM)
+        const [inHour, inMin] = att.time_in.split(':').map(Number);
+        if (inHour > 9 || (inHour === 9 && inMin > 0)) {
+          late++;
+        }
+        
+        // Add hours worked
+        const hours = Number(att.hours_worked || 0);
+        if (hours > 0) hoursArray.push(hours);
+      } else if (att?.time_in && !att?.time_out) {
+        // Has time_in but no time_out - calculate real-time hours for avg calculation
+        const [inHour, inMin] = att.time_in.split(':').map(Number);
+        const [currHour, currMin] = currentTimeStr.split(':').map(Number);
+        const inMinutes = inHour * 60 + inMin;
+        const currMinutes = currHour * 60 + currMin;
+        const realTimeHours = Math.max(0, (currMinutes - inMinutes) / 60);
+        hoursArray.push(realTimeHours);
+        // Note: This employee is still absent (doesn't have both time_in and time_out)
+      }
+    });
+    
+    // Calculate absent: employees not on leave who don't have both time_in and time_out
+    let absent = 0;
+    employees.forEach(emp => {
+      const empId = String(emp.id);
+      if (employeesOnLeave.has(empId)) return; // Skip if on leave
+      
+      const att = attendanceByEmp.get(empId);
+      if (!att?.time_in || !att?.time_out) {
+        // Doesn't have both time_in and time_out - absent
+        absent++;
+      }
+    });
+    
+    // On leave count
+    const onLeave = employeesOnLeave.size;
+    
+    // Calculate average hours (including real-time calculations for those with time_in but no time_out)
+    const avgHours = hoursArray.length > 0
+      ? +(hoursArray.reduce((s, h) => s + h, 0) / hoursArray.length).toFixed(2)
       : 0;
-    return { totalEmployees: total, present, absent, late: 0, onLeave, averageHours: avgHours };
-  }, [employees, attendanceToday, recentLeaves]);
+    
+    return { totalEmployees: total, present, absent, late, onLeave, averageHours: avgHours };
+  }, [employees, attendanceToday, allLeaves, currentTime]);
 
   const leaveRequests = useMemo(() => {
     const empById = new Map((employees || []).map(e => [e.id, e]));

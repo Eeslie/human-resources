@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import jsPDF from 'jspdf';
 import Link from 'next/link';
 import { SidebarInset } from '@humanresource/components/ui/sidebar';
+import HROnlyRoute from '../../components/HROnlyRoute';
+import { authFetch } from '../../lib/api-client';
 
 export default function EmployeeRecords() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -33,12 +35,15 @@ export default function EmployeeRecords() {
   const [newHistory, setNewHistory] = useState({ action: '', description: '', status: 'success' });
   const [addingHistory, setAddingHistory] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [linkingAccount, setLinkingAccount] = useState(false);
 
   async function fetchEmployees() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/employees', { cache: 'no-store' });
+      const res = await authFetch('/api/employees', { cache: 'no-store' });
       if (!res.ok) {
         const maybeError = await res.json().catch(() => ({}));
         setError(maybeError?.error || 'Failed to load employees');
@@ -66,6 +71,74 @@ export default function EmployeeRecords() {
 
   async function fetchDepartments() { setDepartments([]); }
 
+  async function fetchUsers() {
+    try {
+      const res = await authFetch('/api/users', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch users:', e);
+    }
+  }
+
+  async function linkAccount(userId, employeeId) {
+    setLinkingAccount(true);
+    try {
+      const res = await authFetch('/api/users', {
+        method: 'PUT',
+        body: JSON.stringify({ userId, employeeId })
+      });
+      if (res.ok) {
+        await fetchUsers();
+        await fetchEmployees();
+        setShowAccountModal(false);
+        alert('Account linked successfully!');
+      } else {
+        const error = await res.json().catch(() => ({}));
+        alert(error.error || 'Failed to link account');
+      }
+    } catch (e) {
+      alert('Failed to link account');
+    } finally {
+      setLinkingAccount(false);
+    }
+  }
+
+  async function unlinkAccount(userId) {
+    if (!confirm('Are you sure you want to unlink this account?')) return;
+    setLinkingAccount(true);
+    try {
+      const res = await authFetch('/api/users', {
+        method: 'PUT',
+        body: JSON.stringify({ userId, employeeId: null })
+      });
+      if (res.ok) {
+        await fetchUsers();
+        await fetchEmployees();
+        setShowAccountModal(false);
+        alert('Account unlinked successfully!');
+      } else {
+        const error = await res.json().catch(() => ({}));
+        alert(error.error || 'Failed to unlink account');
+      }
+    } catch (e) {
+      alert('Failed to unlink account');
+    } finally {
+      setLinkingAccount(false);
+    }
+  }
+
+  function getEmployeeAccount(employeeId) {
+    return users.find(u => u.employee_id === employeeId);
+  }
+
+  useEffect(() => {
+    fetchEmployees();
+    fetchUsers();
+  }, []);
+
   function addEmployee() {
     setNewEmployee({
       first_name: '',
@@ -86,9 +159,8 @@ export default function EmployeeRecords() {
     if (!newEmployee.first_name || !newEmployee.last_name) return;
     setAdding(true);
     try {
-      const res = await fetch('/api/employees', {
+      const res = await authFetch('/api/employees', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEmployee)
       });
       if (!res.ok) throw new Error('Failed');
@@ -239,7 +311,8 @@ export default function EmployeeRecords() {
   ];
 
   return (
-    <SidebarInset className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <HROnlyRoute>
+      <SidebarInset className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Navigation Header */}
       <nav className="bg-white shadow-lg border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -297,8 +370,19 @@ export default function EmployeeRecords() {
               </div>
 
               <div className="space-y-3">
-                {loading && <div className="text-slate-600">Loading...</div>}
-                {error && <div className="text-red-600">{error}</div>}
+                {loading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-2"></div>
+                      <p className="text-slate-600 text-sm">Loading employees...</p>
+                    </div>
+                  </div>
+                )}
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+                    {error}
+                  </div>
+                )}
                 {(Array.isArray(employees) ? employees.slice((currentPage - 1) * pageSize, currentPage * pageSize) : []).map((employee) => (
                   <div
                     key={employee.id}
@@ -317,6 +401,11 @@ export default function EmployeeRecords() {
                         <h4 className="font-semibold text-black">{employee.first_name} {employee.last_name}</h4>
                         <p className="text-sm text-gray-700">{employee.job_title}</p>
                         <p className="text-xs text-gray-600">{employee.department || 'Department'} • ID: {employee.employee_id}</p>
+                        {getEmployeeAccount(employee.id) ? (
+                          <p className="text-xs text-green-600 font-medium">✓ Has Account</p>
+                        ) : (
+                          <p className="text-xs text-gray-400">No Account</p>
+                        )}
                       </div>
                       <div className="flex items-center space-x-2">
                         <div className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -381,16 +470,33 @@ export default function EmployeeRecords() {
                         <h3 className="text-2xl font-bold text-slate-800">{selectedEmployee.first_name} {selectedEmployee.last_name}</h3>
                         <p className="text-lg text-slate-600">{selectedEmployee.job_title}</p>
                         <p className="text-slate-500">{selectedEmployee.department || 'Department'} • ID: {selectedEmployee.employee_id}</p>
+                        {getEmployeeAccount(selectedEmployee.id) ? (
+                          <p className="text-sm text-green-600 font-medium mt-1">
+                            ✓ Account: {getEmployeeAccount(selectedEmployee.id).email} ({getEmployeeAccount(selectedEmployee.id).position})
+                          </p>
+                        ) : (
+                          <p className="text-sm text-gray-400 mt-1">No account linked</p>
+                        )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => deleteEmployee(selectedEmployee.id, `${selectedEmployee.first_name} ${selectedEmployee.last_name}`)}
-                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
-                      title="Delete employee"
-                    >
-                      <span>🗑️</span>
-                      <span>Delete</span>
-                    </button>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setShowAccountModal(true)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                        title="Manage account"
+                      >
+                        <span>👤</span>
+                        <span>{getEmployeeAccount(selectedEmployee.id) ? 'Manage Account' : 'Link Account'}</span>
+                      </button>
+                      <button
+                        onClick={() => deleteEmployee(selectedEmployee.id, `${selectedEmployee.first_name} ${selectedEmployee.last_name}`)}
+                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                        title="Delete employee"
+                      >
+                        <span>🗑️</span>
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -809,6 +915,64 @@ export default function EmployeeRecords() {
           </div>
         </div>
       )}
-    </SidebarInset>
+
+      {/* Account Management Modal */}
+      {showAccountModal && selectedEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowAccountModal(false)}></div>
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-black">
+                Manage Account for {selectedEmployee.first_name} {selectedEmployee.last_name}
+              </h3>
+              <button onClick={() => setShowAccountModal(false)} className="text-slate-500 hover:text-slate-700">✕</button>
+            </div>
+            <div className="p-6">
+              {getEmployeeAccount(selectedEmployee.id) ? (
+                <div className="space-y-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h4 className="font-medium text-green-800 mb-2">Current Account</h4>
+                    <p className="text-sm text-green-700"><strong>Email:</strong> {getEmployeeAccount(selectedEmployee.id).email}</p>
+                    <p className="text-sm text-green-700"><strong>Name:</strong> {getEmployeeAccount(selectedEmployee.id).full_name}</p>
+                    <p className="text-sm text-green-700"><strong>Position:</strong> {getEmployeeAccount(selectedEmployee.id).position}</p>
+                  </div>
+                  <button
+                    onClick={() => unlinkAccount(getEmployeeAccount(selectedEmployee.id).id)}
+                    disabled={linkingAccount}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {linkingAccount ? 'Unlinking...' : 'Unlink Account'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-slate-600 mb-4">This employee doesn't have an account linked. Select an account to link:</p>
+                  {users.filter(u => !u.employee_id || u.employee_id === selectedEmployee.id).length === 0 ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-yellow-800 text-sm">No available accounts to link. Please create an account first via the signup page.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {users.filter(u => !u.employee_id || u.employee_id === selectedEmployee.id).map((user) => (
+                        <div
+                          key={user.id}
+                          className="border border-slate-200 rounded-lg p-3 hover:bg-slate-50 cursor-pointer"
+                          onClick={() => linkAccount(user.id, selectedEmployee.id)}
+                        >
+                          <p className="font-medium text-black">{user.full_name}</p>
+                          <p className="text-sm text-slate-600">{user.email}</p>
+                          <p className="text-xs text-slate-500">{user.position}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      </SidebarInset>
+    </HROnlyRoute>
   );
 }
