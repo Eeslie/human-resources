@@ -78,16 +78,16 @@ export default function Home() {
   return (
     <div className="min-h-screen w-screen bg-gradient-to-br from-green-50 to-orange-50">
       {/* Navigation Header */}
-      <nav className="bg-white shadow-lg border-b border-green-200 w-full">
+      <nav className="bg-white shadow-lg border-b border-green-200 w-full sticky top-0 z-50">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 flex-shrink-0">
               <div className="w-8 h-8 bg-gradient-to-r from-green-800 to-green-900 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-lg">☕</span>
               </div>
               <h1 className="text-xl font-bold text-black">Starbucks Partner Management</h1>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4 flex-shrink-0">
               <Link href="/" className="text-black hover:text-gray-600 font-medium">
                 Overview
               </Link>
@@ -112,18 +112,12 @@ export default function Home() {
                 </Link>
               )}
               {user && (
-                <div className="flex items-center space-x-3 ml-4 pl-4 border-l border-gray-300">
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-black">{user.fullName}</div>
-                    <div className="text-xs text-gray-600">{user.position}</div>
-                  </div>
-                  <button
-                    onClick={logout}
-                    className="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    Logout
-                  </button>
-                </div>
+                <button
+                  onClick={logout}
+                  className="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors ml-4"
+                >
+                  Logout
+                </button>
               )}
             </div>
           </div>

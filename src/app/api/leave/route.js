@@ -62,12 +62,36 @@ export async function POST(request) {
 			return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 		}
 
+		// Calculate days and check limit
+		let status = body.status ?? 'Pending';
+		
+		if (body.start_date && body.end_date) {
+			const startDate = new Date(body.start_date);
+			const endDate = new Date(body.end_date);
+			const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+			
+			// Leave limitations
+			const leaveLimitations = {
+				'Vacation': 6,
+				'Sick Leave': 4,
+				'Personal Leave': 2,
+				'Emergency Leave': 2
+			};
+			
+			const limit = leaveLimitations[body.leave_type] || 0;
+			
+			// Auto-reject if exceeds limit - status will be 'Rejected' instead of 'Pending'
+			if (limit > 0 && days > limit) {
+				status = 'Rejected';
+			}
+		}
+
 		const insert = {
 			employee_id: employeeUuid,
 			leave_type: body.leave_type,
 			start_date: body.start_date,
 			end_date: body.end_date,
-			status: body.status ?? 'Pending'
+			status: status
 		};
 
 		const { data, error } = await supabase.from('leave_request').insert(insert).select('*').single();

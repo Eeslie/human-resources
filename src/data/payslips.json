@@ -21,17 +21,17 @@
   },
   {
     "id": "bd9e369b-bb88-473f-a37b-6f7c064bce2b",
-    "created_at": "2026-01-02T09:15:14.846Z",
-    "payslip_id": "146c4c66-b0ec-4d65-a90f-2264173c135a",
+    "created_at": "2026-01-12T02:01:57.102Z",
+    "payslip_id": "3b77e6d1-e226-40fd-9cee-39966b35c45a",
     "payroll_id": "15f9ad0a-8747-41be-a076-307555f13451",
     "employee_id": "24a1a1c7-f9be-4944-94e9-e366f54ae61f",
     "issue_date": "2024-12-12",
     "amounts": {
-      "basic": 18000,
-      "bonus": 5000,
+      "basic": 55000,
+      "bonus": 12000,
       "overtime": 600,
-      "deductions": 4000,
-      "net": 19600
+      "deductions": 14000,
+      "net": 53600
     },
     "attendance": {
       "totalHours": 0,

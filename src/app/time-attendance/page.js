@@ -19,6 +19,7 @@ export default function TimeAttendance() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [attendanceToday, setAttendanceToday] = useState([]);
+  const [allAttendance, setAllAttendance] = useState([]); // For calendar view
   const [recentLeaves, setRecentLeaves] = useState([]);
   const [allLeaves, setAllLeaves] = useState([]);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
@@ -50,6 +51,33 @@ export default function TimeAttendance() {
     } catch (_e) { return str; }
   }
 
+  // Format hours and minutes from decimal hours (e.g., 8.5 -> "8h 30m")
+  function formatHoursMinutes(decimalHours) {
+    if (!decimalHours || decimalHours === 0) return '0h 0m';
+    const hours = Math.floor(decimalHours);
+    const minutes = Math.round((decimalHours - hours) * 60);
+    if (minutes === 0) return `${hours}h`;
+    if (hours === 0) return `${minutes}m`;
+    return `${hours}h ${minutes}m`;
+  }
+
+  // Calculate hours and minutes from time_in and time_out
+  function calculateHoursMinutes(timeIn, timeOut) {
+    if (!timeIn || !timeOut) return { hours: 0, minutes: 0, totalMinutes: 0 };
+    try {
+      const [inHour, inMin] = timeIn.split(':').map(Number);
+      const [outHour, outMin] = timeOut.split(':').map(Number);
+      const inMinutes = inHour * 60 + inMin;
+      const outMinutes = outHour * 60 + outMin;
+      const totalMinutes = Math.max(0, outMinutes - inMinutes);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return { hours, minutes, totalMinutes };
+    } catch (_e) {
+      return { hours: 0, minutes: 0, totalMinutes: 0 };
+    }
+  }
+
   function isoToday() {
     return new Date().toISOString().slice(0,10);
   }
@@ -57,19 +85,28 @@ export default function TimeAttendance() {
 
   useEffect(() => {
     async function loadAll() {
-      const [empRes, attRes, leaveRes] = await Promise.all([
+      const today = new Date();
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const startDate = firstDay.toISOString().slice(0, 10);
+      const endDate = lastDay.toISOString().slice(0, 10);
+      
+      const [empRes, attRes, attMonthRes, leaveRes] = await Promise.all([
         authFetch('/api/employees', { cache: 'no-store' }),
         authFetch(`/api/attendance?date=${selectedDate}`, { cache: 'no-store' }),
+        authFetch(`/api/attendance?start_date=${startDate}&end_date=${endDate}`, { cache: 'no-store' }),
         authFetch('/api/leave', { cache: 'no-store' })
       ]);
-      const [emp, att, leaves] = await Promise.all([
+      const [emp, att, attMonth, leaves] = await Promise.all([
         empRes.json().catch(() => []),
         attRes.json().catch(() => []),
+        attMonthRes.json().catch(() => []),
         leaveRes.json().catch(() => [])
       ]);
       
       setEmployees(Array.isArray(emp) ? emp : []);
       setAttendanceToday(Array.isArray(att) ? att : []);
+      setAllAttendance(Array.isArray(attMonth) ? attMonth : []);
       setAllLeaves(Array.isArray(leaves) ? leaves : []);
       setRecentLeaves(Array.isArray(leaves) ? leaves.slice(0, 6) : []);
     }
@@ -97,7 +134,22 @@ export default function TimeAttendance() {
 
   async function saveAttendance(e) {
     e?.preventDefault?.();
-    const payload = { employee_id: attendanceForm.employee_id, date: attendanceForm.date, time_in: attendanceForm.time_in || null, time_out: attendanceForm.time_out || null, hours_worked: attendanceForm.hours_worked || null };
+    let hoursWorked = attendanceForm.hours_worked;
+    
+    // Calculate hours_worked from time_in and time_out if both are provided
+    if (attendanceForm.time_in && attendanceForm.time_out && (!hoursWorked || hoursWorked === '0' || hoursWorked === '')) {
+      const { totalMinutes } = calculateHoursMinutes(attendanceForm.time_in, attendanceForm.time_out);
+      hoursWorked = (totalMinutes / 60).toFixed(2);
+    }
+    
+    const payload = { 
+      employee_id: attendanceForm.employee_id, 
+      date: attendanceForm.date, 
+      time_in: attendanceForm.time_in || null, 
+      time_out: attendanceForm.time_out || null, 
+      hours_worked: hoursWorked ? parseFloat(hoursWorked) : null 
+    };
+    
     if (attendanceForm.id) {
       await authFetch('/api/attendance', { method: 'PUT', body: JSON.stringify({ id: attendanceForm.id, updates: payload }) });
     } else {
@@ -151,12 +203,8 @@ export default function TimeAttendance() {
       if (existing?.time_out) {
         payload.time_out = existing.time_out;
         // Recalculate hours if time_out already exists
-        const [inHour, inMin] = currentTime.split(':').map(Number);
-        const [outHour, outMin] = existing.time_out.split(':').map(Number);
-        const inMinutes = inHour * 60 + inMin;
-        const outMinutes = outHour * 60 + outMin;
-        const hoursWorked = (outMinutes - inMinutes) / 60;
-        payload.hours_worked = Math.max(0, hoursWorked).toFixed(2);
+        const { totalMinutes } = calculateHoursMinutes(currentTime, existing.time_out);
+        payload.hours_worked = (totalMinutes / 60).toFixed(2);
       }
     } else if (type === 'out') {
       payload.time_out = currentTime;
@@ -164,12 +212,8 @@ export default function TimeAttendance() {
       if (existing?.time_in) {
         payload.time_in = existing.time_in;
         // Calculate hours worked
-        const [inHour, inMin] = existing.time_in.split(':').map(Number);
-        const [outHour, outMin] = currentTime.split(':').map(Number);
-        const inMinutes = inHour * 60 + inMin;
-        const outMinutes = outHour * 60 + outMin;
-        const hoursWorked = (outMinutes - inMinutes) / 60;
-        payload.hours_worked = Math.max(0, hoursWorked).toFixed(2);
+        const { totalMinutes } = calculateHoursMinutes(existing.time_in, currentTime);
+        payload.hours_worked = (totalMinutes / 60).toFixed(2);
       } else {
         // If no time_in exists, we still need to set time_out but can't calculate hours
         payload.hours_worked = null;
@@ -206,6 +250,10 @@ export default function TimeAttendance() {
 
   function openViewDetails(row) {
     const existing = (attendanceToday || []).find(a => a.employee_id === row.employee_id);
+    const hoursWorked = Number(existing?.hours_worked || 0);
+    const { hours, minutes } = existing?.time_in && existing?.time_out 
+      ? calculateHoursMinutes(existing.time_in, existing.time_out)
+      : { hours: Math.floor(hoursWorked), minutes: Math.round((hoursWorked - Math.floor(hoursWorked)) * 60) };
     setViewData({
       name: row.name,
       department: row.department,
@@ -213,7 +261,10 @@ export default function TimeAttendance() {
       date: existing?.date || isoToday(),
       time_in: formatTime(existing?.time_in),
       time_out: formatTime(existing?.time_out),
-      hours: Number(existing?.hours_worked || 0)
+      hours: hoursWorked,
+      hoursDisplay: formatHoursMinutes(hoursWorked),
+      hoursRaw: hours,
+      minutesRaw: minutes
     });
     setViewModalOpen(true);
   }
@@ -221,6 +272,22 @@ export default function TimeAttendance() {
   async function saveLeave(e) {
     e?.preventDefault?.();
     try {
+      // Validate date duration
+      if (leaveForm.start_date && leaveForm.end_date) {
+        const startDate = new Date(leaveForm.start_date);
+        const endDate = new Date(leaveForm.end_date);
+        const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+        const limit = leaveLimitations[leaveForm.leave_type] || 0;
+        
+        if (limit > 0 && days > limit) {
+          const confirmed = window.confirm(
+            `⚠️ Warning: This leave request (${days} days) exceeds the limit for ${leaveForm.leave_type} (${limit} days).\n\n` +
+            `The request will be automatically rejected. Do you want to proceed?`
+          );
+          if (!confirmed) return;
+        }
+      }
+      
       const response = await fetch('/api/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(leaveForm) });
       if (!response.ok) {
         const error = await response.json();
@@ -228,11 +295,23 @@ export default function TimeAttendance() {
         alert('Failed to create leave request: ' + (error.error || 'Unknown error'));
         return;
       }
+      
+      // API now handles auto-rejection, so we just refresh
+      const leaveData = await response.json();
       setLeaveModalOpen(false);
       const res = await fetch('/api/leave', { cache: 'no-store' });
       const leaves = await res.json().catch(() => []);
       setAllLeaves(Array.isArray(leaves) ? leaves : []);
       setRecentLeaves(Array.isArray(leaves) ? leaves.slice(0, 6) : []);
+      
+      if (leaveData.status === 'Rejected') {
+        const startDate = new Date(leaveForm.start_date);
+        const endDate = new Date(leaveForm.end_date);
+        const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+        const limit = leaveLimitations[leaveForm.leave_type] || 0;
+        const rejectionReason = `Requested ${days} days exceeds the limit of ${limit} days for ${leaveForm.leave_type}`;
+        alert(`⚠️ Leave request was automatically rejected.\n\nReason: ${rejectionReason}`);
+      }
     } catch (err) {
       console.error('Leave creation error:', err);
       alert('Failed to create leave request: ' + err.message);
@@ -298,7 +377,7 @@ export default function TimeAttendance() {
           late++;
         }
         
-        // Add hours worked
+        // Add hours worked (convert to decimal for average calculation)
         const hours = Number(att.hours_worked || 0);
         if (hours > 0) hoursArray.push(hours);
       } else if (att?.time_in && !att?.time_out) {
@@ -367,6 +446,10 @@ export default function TimeAttendance() {
     const byEmp = new Map((attendanceToday || []).map(r => [String(r.employee_id), r]));
     return (employees || []).map(emp => {
       const a = byEmp.get(String(emp.id));
+      const hoursWorked = Number(a?.hours_worked || 0);
+      const { hours, minutes } = a?.time_in && a?.time_out 
+        ? calculateHoursMinutes(a.time_in, a.time_out)
+        : { hours: Math.floor(hoursWorked), minutes: Math.round((hoursWorked - Math.floor(hoursWorked)) * 60) };
       return {
         id: a?.id || emp.id,
         employee_id: emp.id,
@@ -375,7 +458,10 @@ export default function TimeAttendance() {
         department: emp.department || '',
         checkIn: formatTime(a?.time_in),
         checkOut: formatTime(a?.time_out),
-        hours: Number(a?.hours_worked || 0),
+        hours: hoursWorked,
+        hoursDisplay: formatHoursMinutes(hoursWorked),
+        hoursRaw: hours,
+        minutesRaw: minutes,
         status: a?.time_in ? 'Present' : 'Absent',
         avatar: '☕'
       };
@@ -511,7 +597,7 @@ export default function TimeAttendance() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-700">Avg Hours</p>
-                <p className="text-2xl font-bold text-black">{attendanceStats.averageHours}</p>
+                <p className="text-2xl font-bold text-black">{formatHoursMinutes(attendanceStats.averageHours)}</p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                 <span className="text-2xl">📊</span>
@@ -586,7 +672,7 @@ export default function TimeAttendance() {
                             </div>
                             <div>
                               <span className="text-gray-600">Hours:</span>
-                              <span className="font-medium ml-1 text-black">{employee.hours}h</span>
+                              <span className="font-medium ml-1 text-black">{employee.hoursDisplay || formatHoursMinutes(employee.hours)}</span>
                             </div>
                           </div>
                           <div className="mt-3">
@@ -636,13 +722,23 @@ export default function TimeAttendance() {
                               </div>
                             </div>
                             <span className={`px-2 py-1 text-xs rounded-full ${
-                              request.status === 'Approved' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                              request.status === 'Approved' ? 'bg-green-100 text-green-800' : 
+                              request.status === 'Rejected' ? 'bg-red-100 text-red-800' : 
+                              'bg-yellow-100 text-yellow-800'
                             }`}>
                               {request.status}
                             </span>
                           </div>
                           <div className="text-sm text-green-800">
                             <p>{request.startDate} - {request.endDate} ({request.days} days)</p>
+                            {request.status === 'Rejected' && request.isOverLimit && (() => {
+                              const rejectionReason = `Requested ${request.days} days exceeds the limit of ${request.limit} days for ${request.type}`;
+                              return (
+                                <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-xs text-red-800">
+                                  <span className="font-medium">Rejection Reason:</span> {rejectionReason}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       ))}
@@ -663,6 +759,53 @@ export default function TimeAttendance() {
                       onChange={(e) => setSelectedDate(e.target.value)}
                       className="border border-green-300 rounded-lg px-3 py-2 text-black"
                     />
+                  </div>
+                </div>
+
+                {/* Attendance Calendar View */}
+                <div className="bg-white border border-green-200 rounded-lg p-6">
+                  <h4 className="font-semibold text-green-900 mb-4">Attendance Calendar</h4>
+                  <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-green-700 mb-2">
+                    <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                  </div>
+                  <div className="grid grid-cols-7 gap-2">
+                    {(() => {
+                      const today = new Date();
+                      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                      const startDate = new Date(firstDay);
+                      startDate.setDate(startDate.getDate() - startDate.getDay());
+                      const days = [];
+                      for (let i = 0; i < 42; i++) {
+                        const date = new Date(startDate);
+                        date.setDate(startDate.getDate() + i);
+                        const dateStr = date.toISOString().slice(0, 10);
+                        const dayAttendance = allAttendance.filter(att => att.date === dateStr);
+                        const isCurrentMonth = date.getMonth() === today.getMonth();
+                        const isToday = dateStr === today.toISOString().slice(0, 10);
+                        const hasAttendance = dayAttendance.length > 0;
+                        days.push(
+                          <div 
+                            key={i} 
+                            className={`p-2 text-xs border rounded cursor-pointer hover:bg-green-50 ${
+                              !isCurrentMonth ? 'text-slate-300 border-slate-200' : 
+                              isToday ? 'bg-green-100 border-green-400 font-semibold' : 
+                              hasAttendance ? 'bg-green-50 border-green-300' :
+                              'border-green-200'
+                            }`}
+                            onClick={() => setSelectedDate(dateStr)}
+                            title={hasAttendance ? `${dayAttendance.length} attendance record(s)` : 'No attendance'}
+                          >
+                            <div>{date.getDate()}</div>
+                            {hasAttendance && (
+                              <div className="mt-1 text-xs text-green-700 font-medium">
+                                {dayAttendance.length} record{dayAttendance.length > 1 ? 's' : ''}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return days;
+                    })()}
                   </div>
                 </div>
 
@@ -703,7 +846,7 @@ export default function TimeAttendance() {
                             {employee.checkOut}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-green-900">
-                            {employee.hours}h
+                            {employee.hoursDisplay || formatHoursMinutes(employee.hours)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -799,94 +942,108 @@ export default function TimeAttendance() {
                   <div>
                     <h4 className="font-semibold text-green-900 mb-4">Leave Requests</h4>
                     <div className="space-y-4">
-                      {paginatedLeaves.filter(r => leaveFilter === 'All Types' ? true : r.type === leaveFilter).map((request) => (
-                        <div key={request.id} className="bg-white border border-green-200 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center text-xl">
-                                {request.avatar}
+                      {paginatedLeaves.filter(r => leaveFilter === 'All Types' ? true : r.type === leaveFilter).map((request) => {
+                        return (
+                          <div key={request.id} className={`bg-white border rounded-lg p-4 ${
+                            request.status === 'Rejected' ? 'border-red-300 bg-red-50' :
+                            request.status === 'Approved' ? 'border-green-300 bg-green-50' :
+                            'border-green-200'
+                          }`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center text-xl">
+                                  {request.avatar}
+                                </div>
+                                <div>
+                                  <h5 className="font-medium text-green-900">{request.employee}</h5>
+                                  <p className="text-sm text-green-800">{request.type}</p>
+                                </div>
                               </div>
-                              <div>
-                                <h5 className="font-medium text-green-900">{request.employee}</h5>
-                                <p className="text-sm text-green-800">{request.type}</p>
-                              </div>
+                              <span className={`px-2 py-1 text-xs rounded-full ${
+                                request.status === 'Approved' ? 'bg-green-100 text-green-800' : 
+                                request.status === 'Rejected' ? 'bg-red-100 text-red-800' : 
+                                'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {request.status}
+                              </span>
                             </div>
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              request.status === 'Approved' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {request.status}
-                            </span>
-                          </div>
-                          <div className="space-y-2 text-sm">
-                            <p><span className="font-medium text-green-900">Duration:</span> <span className="text-green-800">{request.startDate} - {request.endDate} ({request.days} days)</span></p>
-                            {request.limit > 0 && (
-                              <p className={request.isOverLimit ? 'text-red-600 font-medium' : 'text-green-700'}>
-                                Limit: {request.days || 0}/{request.limit} days {request.isOverLimit ? '(Exceeded!)' : ''}
-                              </p>
+                            <div className="space-y-2 text-sm">
+                              <p><span className="font-medium text-green-900">Duration:</span> <span className="text-green-800">{request.startDate} - {request.endDate} ({request.days} days)</span></p>
+                              {request.limit > 0 && (
+                                <p className={request.isOverLimit ? 'text-red-600 font-medium' : 'text-green-700'}>
+                                  Limit: {request.days || 0}/{request.limit} days {request.isOverLimit ? '(Exceeded!)' : ''}
+                                </p>
+                              )}
+                              {request.status === 'Rejected' && request.isOverLimit && (() => {
+                                const rejectionReason = `Requested ${request.days} days exceeds the limit of ${request.limit} days for ${request.type}`;
+                                return (
+                                  <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-xs text-red-800">
+                                    <span className="font-medium">Rejection Reason:</span> {rejectionReason}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                            {request.status === 'Pending' && (
+                              <div className="mt-3 flex space-x-2">
+                                <button 
+                                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm" 
+                                  onClick={() => updateLeaveStatus(request.id, 'Approved')}
+                                >
+                                  Approve
+                                </button>
+                                <button className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700" onClick={() => updateLeaveStatus(request.id, 'Rejected')}>
+                                  Reject
+                                </button>
+                              </div>
                             )}
-                          </div>
-                          {request.status === 'Pending' && (
-                            <div className="mt-3 flex space-x-2">
-                              <button 
-                                className={`px-3 py-1 rounded text-sm ${request.isOverLimit ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'} text-white`} 
-                                onClick={async () => {
-                                  if (request.isOverLimit) {
-                                    const confirmed = window.confirm(`This leave request exceeds the limit of ${request.limit} days. Do you want to approve anyway?`);
-                                    if (!confirmed) return;
-                                  }
-                                  await updateLeaveStatus(request.id, 'Approved');
-                                }}
-                              >
-                                {request.isOverLimit ? '⚠️ Approve (Over Limit)' : 'Approve'}
-                              </button>
-                              <button className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700" onClick={() => updateLeaveStatus(request.id, 'Rejected')}>
-                                Reject
-                              </button>
+                            {request.status === 'Rejected' && (
+                              <div className="mt-3 text-xs text-red-700 font-medium">
+                                ⚠️ Automatically rejected due to exceeding leave limit
+                              </div>
+                            )}
+                            <div className="mt-2">
+                              <button className="text-red-700 hover:text-red-900 text-sm" onClick={() => deleteLeave(request.id)}>Delete Request</button>
                             </div>
-                          )}
-                          <div className="mt-2">
-                            <button className="text-red-700 hover:text-red-900 text-sm" onClick={() => deleteLeave(request.id)}>Delete Request</button>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="font-semibold text-green-900 mb-4">Leave Balance</h4>
-                    <div className="bg-white border border-green-200 rounded-lg p-6">
-                      <div className="space-y-4">
-                        {[
-                          { type: 'Vacation', used: 0, total: leaveLimitations['Vacation'] || 6, remaining: leaveLimitations['Vacation'] || 6 },
-                          { type: 'Sick Leave', used: 0, total: leaveLimitations['Sick Leave'] || 4, remaining: leaveLimitations['Sick Leave'] || 4 },
-                          { type: 'Personal Leave', used: 0, total: leaveLimitations['Personal Leave'] || 2, remaining: leaveLimitations['Personal Leave'] || 2 },
-                          { type: 'Emergency Leave', used: 0, total: leaveLimitations['Emergency Leave'] || 2, remaining: leaveLimitations['Emergency Leave'] || 2 }
-                        ].map((leave, index) => {
-                          // Calculate actual used days from approved leaves
-                          const usedDays = leaveRequests
-                            .filter(l => l.type === leave.type && l.status === 'Approved')
-                            .reduce((sum, l) => sum + (l.days || 0), 0);
-                          const remaining = Math.max(0, leave.total - usedDays);
-                          return (
-                          <div key={index} className="space-y-2 pb-3 border-b border-green-100 last:border-b-0 last:pb-0">
-                            <div className="flex justify-between items-center">
-                              <span className="font-medium text-green-900">{leave.type}</span>
-                              <span className="text-sm text-green-800">{usedDays}/{leave.total} days</span>
-                            </div>
-                            <div className="w-full bg-green-200 rounded-full h-2 overflow-hidden">
-                              <div 
-                                className="bg-green-600 h-2 rounded-full transition-all" 
-                                style={{ width: `${Math.min(100, (usedDays / leave.total) * 100)}%` }}
-                              ></div>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-green-700">Used: {usedDays} days</span>
-                              <span className="text-green-600 font-medium">Remaining: {remaining} days</span>
+                    <h4 className="font-semibold text-green-900 mb-4">Leave Classifications</h4>
+                    <div className="space-y-3">
+                      {[
+                        { type: 'Vacation', icon: '🏖️', color: 'blue', total: leaveLimitations['Vacation'] || 6 },
+                        { type: 'Sick Leave', icon: '🏥', color: 'red', total: leaveLimitations['Sick Leave'] || 4 },
+                        { type: 'Personal Leave', icon: '👤', color: 'purple', total: leaveLimitations['Personal Leave'] || 2 },
+                        { type: 'Emergency Leave', icon: '🚨', color: 'orange', total: leaveLimitations['Emergency Leave'] || 2 }
+                      ].map((leave, index) => {
+                        const colorClasses = {
+                          blue: { border: 'border-blue-200', text: 'text-blue-900', iconBg: 'bg-blue-100', iconText: 'text-blue-600' },
+                          red: { border: 'border-red-200', text: 'text-red-900', iconBg: 'bg-red-100', iconText: 'text-red-600' },
+                          purple: { border: 'border-purple-200', text: 'text-purple-900', iconBg: 'bg-purple-100', iconText: 'text-purple-600' },
+                          orange: { border: 'border-orange-200', text: 'text-orange-900', iconBg: 'bg-orange-100', iconText: 'text-orange-600' }
+                        };
+                        
+                        const colors = colorClasses[leave.color];
+                        
+                        return (
+                          <div key={index} className={`bg-white border ${colors.border} rounded-lg p-4 hover:shadow-md transition-shadow`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-4">
+                                <div className={`w-14 h-14 ${colors.iconBg} rounded-xl flex items-center justify-center text-3xl`}>
+                                  {leave.icon}
+                                </div>
+                                <div>
+                                  <h5 className={`font-semibold ${colors.text} text-lg mb-1`}>{leave.type}</h5>
+                                  <p className={`text-2xl font-bold ${colors.text}`}>{leave.total} Days</p>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          );
-                        })}
-                      </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -964,50 +1121,71 @@ export default function TimeAttendance() {
       )}
 
       {/* Leave Request Modal */}
-      {leaveModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setLeaveModalOpen(false)}></div>
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-black">Request Leave</h3>
-              <button onClick={() => setLeaveModalOpen(false)} className="text-slate-600 hover:text-slate-900">✖</button>
+      {leaveModalOpen && (() => {
+        const limit = leaveLimitations[leaveForm.leave_type] || 0;
+        const days = leaveForm.start_date && leaveForm.end_date 
+          ? Math.max(0, Math.floor((new Date(leaveForm.end_date) - new Date(leaveForm.start_date)) / 86400000) + 1)
+          : 0;
+        const isOverLimit = limit > 0 && days > limit;
+        
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setLeaveModalOpen(false)}></div>
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-black">Request Leave</h3>
+                <button onClick={() => setLeaveModalOpen(false)} className="text-slate-600 hover:text-slate-900">✖</button>
+              </div>
+              <form onSubmit={saveLeave} className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Employee</label>
+                  <select value={leaveForm.employee_id} onChange={(e) => setLeaveForm({ ...leaveForm, employee_id: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black">
+                    {(employees || []).map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim()}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Type</label>
+                  <select value={leaveForm.leave_type} onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black">
+                    <option value="Vacation">Vacation (Limit: {leaveLimitations['Vacation'] || 6} days)</option>
+                    <option value="Sick Leave">Sick Leave (Limit: {leaveLimitations['Sick Leave'] || 4} days)</option>
+                    <option value="Personal Leave">Personal Leave (Limit: {leaveLimitations['Personal Leave'] || 2} days)</option>
+                    <option value="Emergency Leave">Emergency Leave (Limit: {leaveLimitations['Emergency Leave'] || 2} days)</option>
+                  </select>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800">
+                    <strong>Leave Limit:</strong> {limit > 0 ? `${limit} days` : 'No limit'}
+                  </p>
+                  {leaveForm.start_date && leaveForm.end_date && (
+                    <p className={`text-sm mt-1 ${isOverLimit ? 'text-red-600 font-semibold' : 'text-blue-700'}`}>
+                      <strong>Requested Duration:</strong> {days} day{days !== 1 ? 's' : ''}
+                      {isOverLimit && ' (Exceeds limit - will be auto-rejected)'}
+                    </p>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">Start Date</label>
+                    <input type="date" value={leaveForm.start_date} onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">End Date</label>
+                    <input type="date" value={leaveForm.end_date} onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
+                  </div>
+                </div>
+                <div className="flex justify-end pt-2 space-x-2">
+                  <button type="button" onClick={() => setLeaveModalOpen(false)} className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">Cancel</button>
+                  <button type="submit" className={`px-4 py-2 rounded-md text-white hover:opacity-90 ${isOverLimit ? 'bg-red-600 hover:bg-red-700' : 'bg-green-700 hover:bg-green-800'}`}>
+                    {isOverLimit ? 'Submit (Will be Rejected)' : 'Submit'}
+                  </button>
+                </div>
+              </form>
             </div>
-            <form onSubmit={saveLeave} className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Employee</label>
-                <select value={leaveForm.employee_id} onChange={(e) => setLeaveForm({ ...leaveForm, employee_id: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black">
-                  {(employees || []).map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim()}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Type</label>
-                <select value={leaveForm.leave_type} onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black">
-                  <option value="Vacation">Vacation</option>
-                  <option value="Sick Leave">Sick Leave</option>
-                  <option value="Personal Leave">Personal Leave</option>
-                  <option value="Emergency Leave">Emergency Leave</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">Start Date</label>
-                  <input type="date" value={leaveForm.start_date} onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">End Date</label>
-                  <input type="date" value={leaveForm.end_date} onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-green-600 focus:ring-green-600 text-black" />
-                </div>
-              </div>
-              <div className="flex justify-end pt-2 space-x-2">
-                <button type="button" onClick={() => setLeaveModalOpen(false)} className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-green-700 text-white rounded-md hover:bg-green-800">Submit</button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* View Details Modal */}
       {viewModalOpen && (
@@ -1025,7 +1203,7 @@ export default function TimeAttendance() {
               <div className="flex justify-between"><span className="text-slate-600">Date</span><span className="text-black font-medium">{viewData?.date}</span></div>
               <div className="flex justify-between"><span className="text-slate-600">Time In</span><span className="text-black font-medium">{viewData?.time_in}</span></div>
               <div className="flex justify-between"><span className="text-slate-600">Time Out</span><span className="text-black font-medium">{viewData?.time_out}</span></div>
-              <div className="flex justify-between"><span className="text-slate-600">Hours</span><span className="text-black font-medium">{viewData?.hours}h</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">Hours</span><span className="text-black font-medium">{viewData?.hours ? formatHoursMinutes(viewData.hours) : '0h 0m'}</span></div>
             </div>
             <div className="mt-4 flex justify-end">
               <button className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50" onClick={() => setViewModalOpen(false)}>Close</button>

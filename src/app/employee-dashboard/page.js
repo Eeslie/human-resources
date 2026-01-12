@@ -160,6 +160,21 @@ export default function EmployeeDashboard() {
       return;
     }
     
+    // Calculate days and check limit
+    const startDate = new Date(leaveForm.start_date);
+    const endDate = new Date(leaveForm.end_date);
+    const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+    const limit = leaveLimitations[leaveForm.leave_type] || 0;
+    const willBeRejected = limit > 0 && days > limit;
+    
+    if (willBeRejected) {
+      const confirmed = window.confirm(
+        `⚠️ Warning: This leave request (${days} days) exceeds the limit for ${leaveForm.leave_type} (${limit} days).\n\n` +
+        `The request will be automatically rejected. Do you want to proceed?`
+      );
+      if (!confirmed) return;
+    }
+    
     setSubmittingLeave(true);
     try {
       const res = await authFetch('/api/leave', {
@@ -169,7 +184,7 @@ export default function EmployeeDashboard() {
           leave_type: leaveForm.leave_type,
           start_date: leaveForm.start_date,
           end_date: leaveForm.end_date,
-          status: 'Pending'
+          status: 'Pending' // API will auto-reject if exceeds limit
         })
       });
       
@@ -178,10 +193,21 @@ export default function EmployeeDashboard() {
         throw new Error(error.error || 'Failed to submit leave request');
       }
       
+      const leaveData = await res.json();
       setShowLeaveModal(false);
       setLeaveForm({ leave_type: 'Vacation', start_date: '', end_date: '' });
       await loadData();
-      alert('Leave request submitted successfully!');
+      
+      if (leaveData.status === 'Rejected') {
+        const startDate = new Date(leaveForm.start_date);
+        const endDate = new Date(leaveForm.end_date);
+        const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+        const limit = leaveLimitations[leaveForm.leave_type] || 0;
+        const rejectionReason = `Requested ${days} days exceeds the limit of ${limit} days for ${leaveForm.leave_type}`;
+        alert(`⚠️ Leave request was automatically rejected.\n\nReason: ${rejectionReason}`);
+      } else {
+        alert('Leave request submitted successfully!');
+      }
     } catch (error) {
       console.error('Leave request error:', error);
       alert(error.message || 'Failed to submit leave request');
@@ -189,6 +215,14 @@ export default function EmployeeDashboard() {
       setSubmittingLeave(false);
     }
   }
+
+  // Leave limitations per type
+  const leaveLimitations = {
+    'Vacation': 6,
+    'Sick Leave': 4,
+    'Personal Leave': 2,
+    'Emergency Leave': 2
+  };
 
   function formatTime(value) {
     if (!value) return '--:--';
@@ -199,6 +233,16 @@ export default function EmployeeDashboard() {
       const d = new Date(`1970-01-01T${str.replace('Z','')}Z`);
       return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch (_e) { return str; }
+  }
+
+  // Format hours and minutes from decimal hours (e.g., 8.5 -> "8h 30m")
+  function formatHoursMinutes(decimalHours) {
+    if (!decimalHours || decimalHours === 0) return '0h 0m';
+    const hours = Math.floor(decimalHours);
+    const minutes = Math.round((decimalHours - hours) * 60);
+    if (minutes === 0) return `${hours}h`;
+    if (hours === 0) return `${minutes}m`;
+    return `${hours}h ${minutes}m`;
   }
 
   function downloadPayslipPDF(payslip) {
@@ -537,7 +581,7 @@ export default function EmployeeDashboard() {
                       <div className="bg-white rounded-lg p-4 border border-green-200">
                         <p className="text-sm text-gray-600 mb-2">Hours Worked</p>
                         <p className="text-2xl font-bold text-green-700">
-                          {todayAttendance?.hours_worked ? `${Number(todayAttendance.hours_worked).toFixed(2)}h` : '0h'}
+                          {todayAttendance?.hours_worked ? formatHoursMinutes(Number(todayAttendance.hours_worked)) : '0h 0m'}
                         </p>
                       </div>
                     </div>
@@ -568,7 +612,7 @@ export default function EmployeeDashboard() {
                               </div>
                               <div>
                                 <span className="text-sm text-gray-600">Hours Worked:</span>
-                                <p className="font-medium text-black">{record.hours_worked ? `${Number(record.hours_worked).toFixed(2)}h` : '0h'}</p>
+                                <p className="font-medium text-black">{record.hours_worked ? formatHoursMinutes(Number(record.hours_worked)) : '0h 0m'}</p>
                               </div>
                             </div>
                           </div>
@@ -596,33 +640,62 @@ export default function EmployeeDashboard() {
                   {leaves.length > 0 ? (
                     leaves
                       .sort((a, b) => new Date(b.created_at || b.start_date) - new Date(a.created_at || a.start_date))
-                      .map((leave) => (
-                        <div key={leave.id} className="bg-white border border-green-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-black text-lg mb-2">{leave.leave_type}</h4>
-                              <p className="text-sm text-gray-600 mb-1">
-                                <span className="font-medium">Period:</span> {leave.start_date} to {leave.end_date}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-medium">Status:</span>{' '}
-                                <span className={`font-medium ${
-                                  leave.status === 'Approved' ? 'text-green-600' :
-                                  leave.status === 'Rejected' ? 'text-red-600' : 'text-yellow-600'
-                                }`}>
-                                  {leave.status}
-                                </span>
-                              </p>
-                            </div>
-                            <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              leave.status === 'Approved' ? 'bg-green-100 text-green-800' :
-                              leave.status === 'Rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {leave.status}
+                      .map((leave) => {
+                        const startDate = new Date(leave.start_date);
+                        const endDate = new Date(leave.end_date);
+                        const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+                        const limit = leaveLimitations[leave.leave_type] || 0;
+                        const isOverLimit = limit > 0 && days > limit;
+                        
+                        return (
+                          <div key={leave.id} className={`bg-white border rounded-lg p-4 hover:shadow-md transition-shadow ${
+                            leave.status === 'Rejected' ? 'border-red-300 bg-red-50' :
+                            leave.status === 'Approved' ? 'border-green-300 bg-green-50' :
+                            'border-green-200'
+                          }`}>
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <h4 className="font-semibold text-black text-lg">{leave.leave_type}</h4>
+                                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                    leave.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                                    leave.status === 'Rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                    {leave.status}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-700 mb-1">
+                                  <span className="font-medium">Period:</span> {leave.start_date} to {leave.end_date}
+                                </p>
+                                <p className="text-sm text-gray-700 mb-1">
+                                  <span className="font-medium">Duration:</span> {days} day{days !== 1 ? 's' : ''}
+                                  {limit > 0 && (
+                                    <span className={`ml-2 ${isOverLimit ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                                      (Limit: {limit} days{isOverLimit ? ' - Exceeded!' : ''})
+                                    </span>
+                                  )}
+                                </p>
+                                {leave.status === 'Rejected' && (() => {
+                                  const startDate = new Date(leave.start_date);
+                                  const endDate = new Date(leave.end_date);
+                                  const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+                                  const limit = leaveLimitations[leave.leave_type] || 0;
+                                  const isOverLimit = limit > 0 && days > limit;
+                                  if (isOverLimit) {
+                                    const rejectionReason = `Requested ${days} days exceeds the limit of ${limit} days for ${leave.leave_type}`;
+                                    return (
+                                      <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-800">
+                                        <span className="font-medium">Rejection Reason:</span> {rejectionReason}
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                   ) : (
                     <p className="text-gray-600 text-center py-8">No leave requests found.</p>
                   )}
@@ -719,11 +792,29 @@ export default function EmployeeDashboard() {
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black"
                   required
                 >
-                  <option value="Vacation">Vacation</option>
-                  <option value="Sick Leave">Sick Leave</option>
-                  <option value="Personal Leave">Personal Leave</option>
-                  <option value="Emergency Leave">Emergency Leave</option>
+                  <option value="Vacation">Vacation (Limit: {leaveLimitations['Vacation'] || 6} days)</option>
+                  <option value="Sick Leave">Sick Leave (Limit: {leaveLimitations['Sick Leave'] || 4} days)</option>
+                  <option value="Personal Leave">Personal Leave (Limit: {leaveLimitations['Personal Leave'] || 2} days)</option>
+                  <option value="Emergency Leave">Emergency Leave (Limit: {leaveLimitations['Emergency Leave'] || 2} days)</option>
                 </select>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Leave Limit:</strong> {leaveLimitations[leaveForm.leave_type] > 0 ? `${leaveLimitations[leaveForm.leave_type]} days` : 'No limit'}
+                </p>
+                {leaveForm.start_date && leaveForm.end_date && (() => {
+                  const startDate = new Date(leaveForm.start_date);
+                  const endDate = new Date(leaveForm.end_date);
+                  const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+                  const limit = leaveLimitations[leaveForm.leave_type] || 0;
+                  const isOverLimit = limit > 0 && days > limit;
+                  return (
+                    <p className={`text-sm mt-1 ${isOverLimit ? 'text-red-600 font-semibold' : 'text-blue-700'}`}>
+                      <strong>Requested Duration:</strong> {days} day{days !== 1 ? 's' : ''}
+                      {isOverLimit && ' (Exceeds limit - will be auto-rejected)'}
+                    </p>
+                  );
+                })()}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Start Date</label>
@@ -753,13 +844,26 @@ export default function EmployeeDashboard() {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={submittingLeave}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                >
-                  {submittingLeave ? 'Submitting...' : 'Submit Request'}
-                </button>
+                {(() => {
+                  const isOverLimit = leaveForm.start_date && leaveForm.end_date && (() => {
+                    const startDate = new Date(leaveForm.start_date);
+                    const endDate = new Date(leaveForm.end_date);
+                    const days = Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+                    const limit = leaveLimitations[leaveForm.leave_type] || 0;
+                    return limit > 0 && days > limit;
+                  })();
+                  return (
+                    <button
+                      type="submit"
+                      disabled={submittingLeave}
+                      className={`px-4 py-2 text-white rounded-lg hover:opacity-90 disabled:opacity-50 ${
+                        isOverLimit ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                      }`}
+                    >
+                      {submittingLeave ? 'Submitting...' : (isOverLimit ? 'Submit (Will be Rejected)' : 'Submit Request')}
+                    </button>
+                  );
+                })()}
               </div>
             </form>
           </div>

@@ -588,11 +588,11 @@ export default function Recruitment() {
 					console.warn('Failed to create offer record, but email was sent');
 				}
 
-				// Update applicant status to "Interview Scheduled"
+				// Update applicant status to "Hiring in Progress" and ensure they appear in interviews
 				await fetch(`/api/applicants/${applicantTarget.id}`, {
 					method: 'PUT',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ status: 'Interview Scheduled' })
+					body: JSON.stringify({ status: 'Hiring in Progress' })
 				});
 
 				// Show success message
@@ -742,6 +742,7 @@ export default function Recruitment() {
 	const [interviewAddOpen, setInterviewAddOpen] = useState(false);
 	const [interviewEditOpen, setInterviewEditOpen] = useState(false);
 	const [interviewEditing, setInterviewEditing] = useState(null);
+	const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [interviewForm, setInterviewForm] = useState({ 
     candidate: '', 
     position: '', 
@@ -1111,8 +1112,10 @@ export default function Recruitment() {
                     <select className="border border-slate-300 rounded-lg px-3 py-2 text-black">
                       <option>All Status</option>
                       <option>Under Review</option>
+                      <option>Hiring in Progress</option>
                       <option>Interview Scheduled</option>
                       <option>Offered</option>
+                      <option>Rejected</option>
                     </select>
                   <button onClick={() => setApplicantAddOpen(true)} className="bg-green-900 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors">+ Add Applicant</button>
                   </div>
@@ -1147,10 +1150,12 @@ export default function Recruitment() {
                       <div className="flex justify-between items-center mb-4">
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           applicant.status === 'Offered' ? 'bg-green-100 text-green-800' :
+                          applicant.status === 'Hiring in Progress' ? 'bg-purple-100 text-purple-800' :
                           applicant.status === 'Interview Scheduled' ? 'bg-blue-100 text-blue-800' :
+                          applicant.status === 'Rejected' ? 'bg-red-100 text-red-800' :
                           'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {applicant.status}
+                          {applicant.status || 'Under Review'}
                         </span>
                         <div className="flex items-center">
                           <span className="text-yellow-500">⭐</span>
@@ -1255,6 +1260,66 @@ export default function Recruitment() {
                         </button>
                 </div>
 
+                {/* Hiring in Progress Section */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
+                  <h4 className="font-semibold text-purple-900 mb-4">Hiring in Progress</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {(() => {
+                      const hiringApplicants = allApplicants.filter(a => (a.status || '') === 'Hiring in Progress');
+                      if (hiringApplicants.length === 0) {
+                        return (
+                          <p className="text-sm text-slate-500 col-span-full">No applicants in hiring process</p>
+                        );
+                      }
+                      return hiringApplicants.map((applicant) => {
+                        // Find related interview if exists
+                        const relatedInterview = interviews.find(i => i.applicant_id === applicant.id);
+                        if (!relatedInterview) {
+                          return (
+                            <div key={applicant.id} className="bg-white border border-purple-200 rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <h5 className="font-medium text-slate-800">{applicant.full_name || applicant.name}</h5>
+                                <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
+                                  Hiring in Progress
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-600 mb-2">{applicant.position || 'No position'}</p>
+                              <p className="text-xs text-slate-400">No interview scheduled yet</p>
+                            </div>
+                          );
+                        }
+                        const timeStr = relatedInterview.time || 'TBD';
+                        const formattedTime = timeStr.includes(':') 
+                          ? new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                          : timeStr;
+                        return (
+                          <div key={applicant.id} className="bg-white border border-purple-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <h5 className="font-medium text-slate-800">{applicant.full_name || applicant.name}</h5>
+                              <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
+                                Hiring in Progress
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-600 mb-3">{applicant.position || 'No position'}</p>
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+                              <p className="text-xs font-semibold text-purple-900 mb-2">Scheduled Interview:</p>
+                              {relatedInterview.date && (
+                                <p className="text-xs text-slate-700">📅 <span className="font-medium">Date:</span> {new Date(relatedInterview.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                              )}
+                              {relatedInterview.time && (
+                                <p className="text-xs text-slate-700">⏰ <span className="font-medium">Time:</span> {formattedTime}</p>
+                              )}
+                              {relatedInterview.location && (
+                                <p className="text-xs text-slate-700">📍 <span className="font-medium">Location:</span> {relatedInterview.location}</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
                     <h4 className="font-semibold text-slate-800 mb-3">Today&apos;s Interviews</h4>
@@ -1302,49 +1367,30 @@ export default function Recruitment() {
                                 <p className="text-sm text-slate-500 mb-2">{interview.type}</p>
                               )}
                               {interview.location && (
-                                <p className="text-xs text-slate-400 mb-2">📍 {interview.location}</p>
+                                <p className="text-sm text-slate-600 mb-2">📍 <span className="font-medium">Location:</span> {interview.location}</p>
                               )}
                               {interview.interviewer && (
                                 <p className="text-xs text-slate-500 mb-2">👤 {interview.interviewer}</p>
                               )}
-                              <div className="mt-3 flex space-x-2">
+                              <div className="mt-3">
                                 <button 
-                                  onClick={() => { 
-                                    setInterviewEditing(interview); 
-                                    setInterviewForm({ 
-                                      candidate: interview.candidate || '', 
-                                      position: interview.position || '', 
-                                      date: interview.date || new Date().toISOString().slice(0,10), 
-                                      time: interview.time || '10:00',
-                                      interviewer: interview.interviewer || '',
-                                      location: interview.location || '',
-                                      status: interview.status || 'Scheduled'
-                                    }); 
-                                    setInterviewEditOpen(true); 
+                                  onClick={async () => { 
+                                    // Mark interview as done
+                                    const res = await fetch(`/api/interviews/${interview.id}`, { 
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ status: 'Completed' })
+                                    });
+                                    if (res.ok) {
+                                      fetchInterviews();
+                                      alert('✅ Interview marked as done.');
+                                    } else {
+                                      alert('❌ Failed to update interview. Please try again.');
+                                    }
                                   }} 
-                                  className="flex-1 bg-orange-600 text-white px-3 py-1.5 rounded text-sm hover:bg-orange-700 transition-colors font-medium"
+                                  className="w-full bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition-colors font-medium"
                                 >
-                                  ✏️ Edit
-                                </button>
-                                <button 
-                                  onClick={() => { 
-                                    setConfirmTitle('Delete Interview'); 
-                                    setConfirmMessage(`Are you sure you want to delete the interview with ${interview.candidate || 'this candidate'}?`); 
-                                    setConfirmAction(() => async () => { 
-                                      const res = await fetch(`/api/interviews/${interview.id}`, { method: 'DELETE' }); 
-                                      if (res.ok) {
-                                        fetchInterviews();
-                                        alert('✅ Interview deleted successfully.');
-                                      } else {
-                                        alert('❌ Failed to delete interview. Please try again.');
-                                      }
-                                      setConfirmOpen(false); 
-                                    }); 
-                                    setConfirmOpen(true); 
-                                  }} 
-                                  className="flex-1 bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700 transition-colors font-medium"
-                                >
-                                  🗑️ Delete
+                                  ✓ Done
                                 </button>
                               </div>
                             </div>
@@ -1355,7 +1401,117 @@ export default function Recruitment() {
                   </div>
 
                   <div>
-                    <h4 className="font-semibold text-slate-800 mb-4">Upcoming Interviews</h4>
+                    <h4 className="font-semibold text-slate-800 mb-4">Interview Calendar</h4>
+                    <div className="bg-white border border-slate-200 rounded-lg p-4 mb-4">
+                      <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-600 mb-2">
+                        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                      </div>
+                      <div className="grid grid-cols-7 gap-2">
+                        {(() => {
+                          const today = new Date();
+                          const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                          const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                          const startDate = new Date(firstDay);
+                          startDate.setDate(startDate.getDate() - startDate.getDay());
+                          const days = [];
+                          for (let i = 0; i < 42; i++) {
+                            const date = new Date(startDate);
+                            date.setDate(startDate.getDate() + i);
+                            const dateStr = date.toISOString().slice(0, 10);
+                            const dayInterviews = interviews.filter(inv => inv.date === dateStr);
+                            const isCurrentMonth = date.getMonth() === today.getMonth();
+                            const isToday = dateStr === today.toISOString().slice(0, 10);
+                            const isSelected = selectedCalendarDate === dateStr;
+                            days.push(
+                              <div 
+                                key={i} 
+                                onClick={() => {
+                                  if (dayInterviews.length > 0 || isCurrentMonth) {
+                                    setSelectedCalendarDate(dateStr);
+                                  }
+                                }}
+                                className={`p-2 text-xs border rounded ${
+                                  !isCurrentMonth ? 'text-slate-300 cursor-default' : 
+                                  isSelected ? 'bg-purple-100 border-purple-400 font-semibold cursor-pointer' :
+                                  isToday ? 'bg-blue-100 border-blue-300 font-semibold cursor-pointer' : 
+                                  dayInterviews.length > 0 ? 'border-purple-300 cursor-pointer hover:bg-purple-50' :
+                                  'border-slate-200 cursor-pointer hover:bg-slate-50'
+                                }`}
+                              >
+                                <div>{date.getDate()}</div>
+                                {dayInterviews.length > 0 && (
+                                  <div className="mt-1 text-xs text-purple-600 font-medium">
+                                    {dayInterviews.length} interview{dayInterviews.length > 1 ? 's' : ''}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return days;
+                        })()}
+                      </div>
+                    </div>
+                    
+                    {/* Selected Date Interviews */}
+                    {selectedCalendarDate && (() => {
+                      const selectedDateInterviews = interviews.filter(inv => inv.date === selectedCalendarDate);
+                      if (selectedDateInterviews.length === 0) {
+                        return (
+                          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+                            <div className="flex justify-between items-center mb-2">
+                              <h5 className="font-semibold text-slate-800">Interviews on {new Date(selectedCalendarDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</h5>
+                              <button 
+                                onClick={() => setSelectedCalendarDate(null)}
+                                className="text-slate-500 hover:text-slate-700 text-sm"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <p className="text-sm text-slate-500">No interviews scheduled for this date.</p>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                          <div className="flex justify-between items-center mb-3">
+                            <h5 className="font-semibold text-purple-900">Interviews on {new Date(selectedCalendarDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</h5>
+                            <button 
+                              onClick={() => setSelectedCalendarDate(null)}
+                              className="text-purple-600 hover:text-purple-800 text-sm"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="space-y-3">
+                            {selectedDateInterviews.map((interview) => {
+                              const timeStr = interview.time || 'TBD';
+                              const formattedTime = timeStr.includes(':') 
+                                ? new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                                : timeStr;
+                              return (
+                                <div key={interview.id} className="bg-white border border-purple-200 rounded-lg p-3">
+                                  <div className="flex justify-between items-start mb-2">
+                                    <h6 className="font-medium text-slate-800">{interview.candidate || 'Unknown Candidate'}</h6>
+                                    <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
+                                      ⏰ {formattedTime}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-slate-600 mb-1">{interview.position || 'No position'}</p>
+                                  {interview.location && (
+                                    <p className="text-xs text-slate-500 mb-1">📍 {interview.location}</p>
+                                  )}
+                                  {interview.interviewer && (
+                                    <p className="text-xs text-slate-400">👤 {interview.interviewer}</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    
+                    <h4 className="font-semibold text-slate-800 mb-4 mt-6">Upcoming Interviews</h4>
                     <div className="space-y-4">
                       {(() => {
                         const now = new Date();
@@ -1633,7 +1789,9 @@ export default function Recruitment() {
       <form onSubmit={async (e) => { e.preventDefault(); if (!applicantTarget?.id) return; const res = await fetch(`/api/applicants/${applicantTarget.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: applicantForm.status }) }); if (res.ok) { setApplicantStatusOpen(false); fetchApplicants(); } }} className="space-y-4">
         <select className="w-full border border-slate-300 rounded-lg px-3 py-2 text-black" value={applicantForm.status} onChange={(e) => setApplicantForm({ ...applicantForm, status: e.target.value })}>
           <option>Under Review</option>
+          <option>Hiring in Progress</option>
           <option>Interview Scheduled</option>
+          <option>Interviewed</option>
           <option>Offered</option>
           <option>Rejected</option>
         </select>

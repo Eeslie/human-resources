@@ -1,10 +1,11 @@
 "use client"
 
 import { usePathname } from "next/navigation";
-import { Sidebar, SidebarContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger, useSidebar } from "./ui/sidebar";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger, useSidebar } from "./ui/sidebar";
 import Link from "next/link";
 import Image from "next/image";
 import { PhilippinePeso, ShoppingBasket, UsersRound } from "lucide-react";
+import { useAuth } from "./AuthProvider";
 
 const employeeDashboard = [
     { 
@@ -27,6 +28,7 @@ const employeeDashboard = [
 export function AppSidebar() {
     const { open } = useSidebar();
     const pathName = usePathname();
+    const { user } = useAuth();
 
     let route = employeeDashboard;
     
@@ -71,6 +73,20 @@ export function AppSidebar() {
                     ))}
                 </SidebarMenu>
             </SidebarContent>
+            {user && (
+                <SidebarFooter className="p-4 border-t border-sidebar-border">
+                    <div className={`flex flex-col ${!open ? 'items-center' : ''}`}>
+                        <div className={`text-sm font-semibold text-sidebar-foreground ${!open ? 'truncate max-w-full' : ''}`}>
+                            {open ? user.fullName : user.fullName.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        {open && (
+                            <div className="text-xs text-sidebar-foreground/70 mt-1">
+                                {user.position}
+                            </div>
+                        )}
+                    </div>
+                </SidebarFooter>
+            )}
         </Sidebar>
     )
 }
